@@ -93,7 +93,9 @@ export default defineSchema({
       v.literal("reader"),
     ),
   })
-    .index("by_kitchen", ["kitchenId", "_creationTime"])
+    // Creation order. by_kitchen_and_user sorts by user instead.
+    // eslint-disable-next-line @convex-dev/no-duplicate-indexes
+    .index("by_kitchen", ["kitchenId"])
     .index("by_user", ["userId"])
     .index("by_kitchen_and_user", ["kitchenId", "userId"]),
 
@@ -104,7 +106,9 @@ export default defineSchema({
     createdAt: v.number(),
     called: v.optional(v.string()),
   })
-    .index("by_viewer", ["viewerId", "_creationTime"])
+    // Creation order. by_viewer_and_other sorts by the other person instead.
+    // eslint-disable-next-line @convex-dev/no-duplicate-indexes
+    .index("by_viewer", ["viewerId"])
     .index("by_viewer_and_other", ["viewerId", "otherUserId"])
     .index("by_other", ["otherUserId"]),
 
@@ -138,7 +142,9 @@ export default defineSchema({
     slug: v.string(),
   })
     .index("by_user_and_madeAt", ["userId", "madeAt"])
-    .index("by_bake", ["bakeId", "_creationTime"])
+    // Creation order. by_bake_and_user sorts by who cooked it instead.
+    // eslint-disable-next-line @convex-dev/no-duplicate-indexes
+    .index("by_bake", ["bakeId"])
     .index("by_bake_and_user", ["bakeId", "userId"]),
 
   recipeSlips: defineTable({

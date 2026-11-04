@@ -1,3 +1,4 @@
+/* global Buffer, process */
 import { pathToFileURL } from "node:url";
 
 /**
@@ -32,6 +33,12 @@ import { pathToFileURL } from "node:url";
 const TWO_MINUTES_MS = 2 * 60 * 1000;
 const FIFTEEN_MINUTES_MS = 15 * 60 * 1000;
 
+/** GitHub records the Actions app under either of these logins. */
+const ACTIONS_MERGE_ACTORS = new Set([
+  "github-actions[bot]",
+  "app/github-actions",
+]);
+
 /**
  * Same-repository pull requests to main merge. Forks stay open.
  * Drafts stay open until GitHub will accept auto-merge.
@@ -59,7 +66,7 @@ export function decideDeploy(snapshot) {
   const sha = snapshot.after.mergeCommitOid ?? "";
   const mergedByActions =
     snapshot.after.state === "MERGED" &&
-    snapshot.after.mergedBy === "github-actions[bot]" &&
+    ACTIONS_MERGE_ACTORS.has(snapshot.after.mergedBy ?? "") &&
     sha !== "";
   if (!mergedByActions) {
     return { sha: "" };
