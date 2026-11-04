@@ -6,19 +6,21 @@ import JSZip from "jszip";
 import { extractText, getDocumentProxy } from "unpdf";
 import { action, env } from "./_generated/server";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import {
   cardFromText,
   cardsFromPages,
   parseCardsJson,
   type ExtractedCard,
 } from "./lib/cardFromText";
-import { sourceKindValidator } from "./lib/sources";
+import { kindFromUrl, sourceKindValidator } from "./lib/sources";
 
 const cardFields = {
   title: v.string(),
   makes: v.string(),
   ingredients: v.array(v.string()),
   steps: v.array(v.string()),
+  notes: v.optional(v.string()),
   sourceKind: sourceKindValidator,
   sourceTitle: v.string(),
 };
@@ -27,6 +29,16 @@ const extractReturn = v.object({
   cards: v.array(v.object(cardFields)),
   usedAi: v.boolean(),
   rawText: v.string(),
+  skipped: v.optional(v.boolean()),
+});
+
+const MAX_SCAN_IMAGES = 6;
+const MAX_SCAN_BYTES = 1_500_000;
+
+const scanFile = v.object({
+  storageId: v.id("_storage"),
+  fileName: v.string(),
+  mimeType: v.string(),
 });
 
 /** Vision-capable free-tier models for recipe photos / scans. */
@@ -43,51 +55,80 @@ export const fromUpload = action({
     storageId: v.id("_storage"),
     fileName: v.string(),
     mimeType: v.string(),
+    images: v.optional(v.array(scanFile)),
   },
   returns: extractReturn,
   handler: async (
     ctx,
     args,
-  ): Promise<{ cards: ExtractedCard[]; usedAi: boolean; rawText: string }> => {
+  ): Promise<{
+    cards: ExtractedCard[];
+    usedAi: boolean;
+    rawText: string;
+    skipped?: boolean;
+  }> => {
     await ctx.runQuery(internal.sallyCredit.assertWriter, {
       writerToken: args.writerToken,
       kitchenId: args.kitchenId,
     });
 
-    const url = await ctx.storage.getUrl(args.storageId);
-    if (!url) {
-      throw new Error("That file didn't stay. Try the upload once more.");
+    const batch = (args.images && args.images.length > 0
+      ? args.images
+      : [
+          {
+            storageId: args.storageId,
+            fileName: args.fileName,
+            mimeType: args.mimeType,
+          },
+        ]
+    ).slice(0, MAX_SCAN_IMAGES);
+
+    const loaded: LoadedFile[] = [];
+    for (const [index, file] of batch.entries()) {
+      const opened = await openStoredFile(ctx, file);
+      if (!opened) {
+        if (index === 0) {
+          throw new Error("That file didn't stay. Try the upload once more.");
+        }
+        continue;
+      }
+      loaded.push(opened);
     }
 
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error("Couldn't open that file.");
+    const pages: string[] = [];
+    const images: ScanImage[] = [];
+    let skippedBig = 0;
+    for (const file of loaded) {
+      if (file.isImage) {
+        if (file.bytes.byteLength > MAX_SCAN_BYTES) {
+          skippedBig += 1;
+          continue;
+        }
+        images.push({
+          bytes: file.bytes,
+          mime: file.mime || "image/jpeg",
+          fileName: file.fileName,
+        });
+        continue;
+      }
+      const textPages = file.isPdf
+        ? await textFromPdf(file.bytes)
+        : await pagesFromFile(file.bytes, file.fileName, file.mime);
+      pages.push(...textPages);
     }
-    const bytes = await response.arrayBuffer();
-    const mime = args.mimeType.toLowerCase();
-    const isImage = mime.startsWith("image/");
-    const isPdf =
-      mime.includes("pdf") ||
-      args.fileName.toLowerCase().endsWith(".pdf") ||
-      new TextDecoder().decode(bytes.slice(0, 5)).startsWith("%PDF");
-
-    const pages = isImage
-      ? []
-      : isPdf
-        ? await textFromPdf(bytes)
-        : await pagesFromFile(bytes, args.fileName, mime);
     const rawText = pages.join("\n\n---\n\n");
+    const onlyImages = loaded.length > 0 && loaded.every((file) => file.isImage);
 
     const apiKey = env.AI_GATEWAY_API_KEY?.trim();
-    if (apiKey) {
+    if (apiKey && (images.length > 0 || rawText.trim().length > 0)) {
       try {
         const cards = await cardsWithAi({
           apiKey,
           pages,
           rawText,
           fileName: args.fileName,
-          imageBytes: isImage ? bytes : null,
-          imageMime: isImage ? mime || "image/jpeg" : null,
+          images,
+          skippedBig,
         });
         if (cards.length > 0) {
           return { cards, usedAi: true, rawText };
@@ -97,12 +138,17 @@ export const fromUpload = action({
         const message = error instanceof Error ? error.message : String(error);
         console.error("Card extract failed", message);
       }
-    } else {
+    } else if (!apiKey) {
       console.warn("Card extract: AI_GATEWAY_API_KEY missing");
     }
 
-    if (isImage) {
-      return { cards: [emptyCard(args.fileName)], usedAi: false, rawText };
+    if (onlyImages) {
+      return {
+        cards: [emptyCard(args.fileName)],
+        usedAi: false,
+        rawText,
+        skipped: !apiKey,
+      };
     }
     if (rawText.trim().length > 0) {
       const fallback =
@@ -121,8 +167,56 @@ function emptyCard(fileName: string): ExtractedCard {
     makes: "",
     ingredients: [],
     steps: [],
+    notes: "",
     sourceKind: "original",
     sourceTitle: "",
+  };
+}
+
+type ScanFile = {
+  storageId: Id<"_storage">;
+  fileName: string;
+  mimeType: string;
+};
+
+type LoadedFile = {
+  bytes: ArrayBuffer;
+  mime: string;
+  fileName: string;
+  isImage: boolean;
+  isPdf: boolean;
+};
+
+type ScanImage = {
+  bytes: ArrayBuffer;
+  mime: string;
+  fileName: string;
+};
+
+async function openStoredFile(
+  ctx: { storage: { getUrl: (id: Id<"_storage">) => Promise<string | null> } },
+  file: ScanFile,
+): Promise<LoadedFile | null> {
+  const url = await ctx.storage.getUrl(file.storageId);
+  if (!url) {
+    return null;
+  }
+  const response = await fetch(url);
+  if (!response.ok) {
+    return null;
+  }
+  const bytes = await response.arrayBuffer();
+  const mime = file.mimeType.toLowerCase();
+  const isPdf =
+    mime.includes("pdf") ||
+    file.fileName.toLowerCase().endsWith(".pdf") ||
+    new TextDecoder().decode(bytes.slice(0, 5)).startsWith("%PDF");
+  return {
+    bytes,
+    mime,
+    fileName: file.fileName,
+    isImage: mime.startsWith("image/"),
+    isPdf,
   };
 }
 
@@ -197,15 +291,15 @@ async function cardsWithAi({
   pages,
   rawText,
   fileName,
-  imageBytes,
-  imageMime,
+  images,
+  skippedBig,
 }: {
   apiKey: string;
   pages: string[];
   rawText: string;
   fileName: string;
-  imageBytes: ArrayBuffer | null;
-  imageMime: string | null;
+  images: ScanImage[];
+  skippedBig: number;
 }): Promise<ExtractedCard[]> {
   const gateway = createGateway({ apiKey });
   const slideBlock =
@@ -213,22 +307,23 @@ async function cardsWithAi({
       ? pages
           .map((page, index) => `--- Page ${index + 1} ---\n${page}`)
           .join("\n\n")
-          .slice(0, 36_000)
-      : rawText.slice(0, 36_000);
-  const hasImage = imageBytes !== null && imageBytes.byteLength > 0;
+          .slice(0, 24_000)
+      : rawText.slice(0, 24_000);
+  const several = images.length > 1;
   const instructions = [
-    "Extract every distinct home-cook recipe card from this private family recipe book file.",
-    hasImage
-      ? "This is a PHOTO or SCAN of a recipe card. Read the handwriting or print carefully. Pull title, yield, ingredients, and steps."
-      : "A PDF, PowerPoint, or text packet may have many recipes — one card per recipe, not one mashed card.",
-    "Skip title slides, indexes, photo-only pages with no recipe words, and leftover notes that are not a recipe.",
-    "Return ONLY valid JSON (no markdown fences): {\"cards\":[{\"title\":\"\",\"makes\":\"\",\"ingredients\":[\"\"],\"steps\":[\"\"],\"sourceKind\":\"original\",\"sourceTitle\":\"\"}]}",
-    "Maximum 24 cards. ingredients and steps are short lines in the cook's words.",
+    "Extract home-cook recipe cards from this private family recipe book file.",
+    several
+      ? "Several photos were sent together. Treat them as one recipe and combine the title, ingredients, steps, and notes across the photos, unless you clearly see separate recipes."
+      : images.length === 1
+        ? "This is a photo or scan of a recipe. Read the handwriting or print. Pull the title, yield, ingredients, steps, and any short note written on the card."
+        : "A PDF, PowerPoint, or text packet may have many recipes — one card per recipe, not one mashed card.",
+    "Skip title slides, indexes, and pages with no recipe words.",
+    "Return ONLY valid JSON (no markdown fences): {\"cards\":[{\"title\":\"\",\"makes\":\"\",\"ingredients\":[\"\"],\"steps\":[\"\"],\"notes\":\"\",\"sourceKind\":\"original\",\"sourceTitle\":\"\"}]}",
+    "Maximum 12 cards. ingredients and steps are short lines. notes is one short aside, or empty.",
     "sourceKind must be sally, original, family, friend, book, tiktok, or pinterest.",
-    "Do not invent ingredients that are not in the file or photo.",
-    "If a page looks like a Sally's Baking Addiction printout, sourceKind is sally and sourceTitle is her recipe name. Do not copy long Sally prose — short family lines only.",
+    "Do not invent ingredients, steps, or notes that are not visible.",
     "If it is a handwritten or typed family card, sourceKind is family. If a friend sent it, friend. If it is from another cookbook, book. TikTok or Pinterest if that is clear.",
-    "Otherwise original.",
+    "Otherwise original. Do not copy a long article. Short lines only.",
   ].join(" ");
 
   const content: Array<
@@ -240,21 +335,24 @@ async function cardsWithAi({
       text: [
         instructions,
         `File name: ${fileName}`,
+        skippedBig > 0
+          ? `${skippedBig} photo${skippedBig === 1 ? "" : "s"} were too large to read. Use the ones attached.`
+          : "",
         slideBlock
           ? `Text from the file:\n${slideBlock}`
-          : hasImage
-            ? "No plain text was available — read the recipe from the image."
+          : images.length > 0
+            ? "No plain text was available. Read the recipe from the attached photos."
             : "No text was extracted from this file.",
       ]
         .filter((line) => line.length > 0)
         .join("\n\n"),
     },
   ];
-  if (hasImage && imageBytes) {
+  for (const image of images) {
     content.push({
       type: "image",
-      image: new Uint8Array(imageBytes),
-      mediaType: imageMime || "image/jpeg",
+      image: new Uint8Array(image.bytes),
+      mediaType: image.mime || "image/jpeg",
     });
   }
 
@@ -271,3 +369,87 @@ async function cardsWithAi({
 
   return parseCardsJson(text);
 }
+
+function htmlToText(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export const fromLink = action({
+  args: {
+    writerToken: v.optional(v.string()),
+    kitchenId: v.optional(v.id("kitchens")),
+    url: v.string(),
+  },
+  returns: extractReturn,
+  handler: async (ctx, args) => {
+    await ctx.runQuery(internal.sallyCredit.assertWriter, {
+      writerToken: args.writerToken,
+      kitchenId: args.kitchenId,
+    });
+
+    const url = args.url.trim();
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      return { cards: [], usedAi: false, rawText: "", skipped: true };
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return { cards: [], usedAi: false, rawText: "", skipped: true };
+    }
+    if (kindFromUrl(url) === "sally") {
+      return { cards: [], usedAi: false, rawText: "", skipped: true };
+    }
+
+    const apiKey = env.AI_GATEWAY_API_KEY?.trim();
+    if (!apiKey) {
+      console.warn("Link extract: AI_GATEWAY_API_KEY missing");
+      return { cards: [], usedAi: false, rawText: "", skipped: true };
+    }
+
+    let rawText: string;
+    try {
+      const response = await fetch(parsed.toString(), {
+        redirect: "follow",
+        headers: { Accept: "text/html" },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!response.ok) {
+        return { cards: [], usedAi: false, rawText: "" };
+      }
+      const html = (await response.text()).slice(0, 60_000);
+      rawText = htmlToText(html).slice(0, 20_000);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Link extract fetch failed", message);
+      return { cards: [], usedAi: false, rawText: "" };
+    }
+
+    if (rawText.length < 40) {
+      return { cards: [], usedAi: false, rawText };
+    }
+
+    try {
+      const cards = await cardsWithAi({
+        apiKey,
+        pages: [rawText],
+        rawText,
+        fileName: parsed.hostname,
+        images: [],
+        skippedBig: 0,
+      });
+      return { cards, usedAi: cards.length > 0, rawText };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Link extract failed", message);
+      return { cards: [], usedAi: false, rawText };
+    }
+  },
+});

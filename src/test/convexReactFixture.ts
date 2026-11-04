@@ -97,12 +97,18 @@ function rememberPhoto(args: unknown) {
   photosByBake.set(bakeId, photos);
 }
 
-function extractedCard(title: string, ingredients: string[], steps: string[]) {
+function extractedCard(
+  title: string,
+  ingredients: string[],
+  steps: string[],
+  notes = "",
+) {
   return {
     title,
     makes: "One batch",
     ingredients,
     steps,
+    notes,
     sourceKind: "original" as const,
     sourceTitle: "",
   };
@@ -144,9 +150,74 @@ function lookupCredit(args: unknown) {
   return { hostOk: true, title: null };
 }
 
+function linkScan(args: unknown) {
+  const url = String(record(args).url ?? "").toLowerCase();
+  if (url.includes("scan-full")) {
+    return {
+      cards: [
+        extractedCard(
+          "Link stew",
+          ["beans", "stock"],
+          ["Heat"],
+          "From the page",
+        ),
+      ],
+      usedAi: true,
+      rawText: "",
+    };
+  }
+  if (url.includes("scan-partial")) {
+    return {
+      cards: [extractedCard("Half a link", [], [], "")],
+      usedAi: true,
+      rawText: "",
+    };
+  }
+  if (url.includes("scan-fail")) {
+    return { cards: [], usedAi: false, rawText: "" };
+  }
+  return { cards: [], usedAi: false, rawText: "", skipped: true };
+}
+
 function extractFromUpload(args: unknown) {
   const fileName = String(record(args).fileName ?? "");
   const lower = fileName.toLowerCase();
+  const images = record(args).images;
+  const imageCount = Array.isArray(images) ? images.length : 0;
+  if (lower.includes("scan-throw")) {
+    throw new Error("The scan didn't finish.");
+  }
+  if (lower.includes("scan-combine") || (imageCount > 1 && lower.includes("scan"))) {
+    return {
+      cards: [extractedCard("Sunday stew", ["lamb", "potato"], ["Simmer"], "")],
+      usedAi: true,
+      rawText: "",
+    };
+  }
+  if (lower.includes("scan-full")) {
+    return {
+      cards: [
+        extractedCard(
+          "Sunday stew",
+          ["lamb", "onion"],
+          ["Simmer"],
+          "Better the next day",
+        ),
+      ],
+      usedAi: true,
+      rawText: "",
+    };
+  }
+  if (lower.includes("scan-partial")) {
+    return {
+      cards: [extractedCard("Half a card", [], [], "")],
+      usedAi: true,
+      rawText: "",
+    };
+  }
+  if (lower.includes("scan-fail")) {
+    return { cards: [], usedAi: false, rawText: "" };
+  }
   if (
     lower.includes("pile") ||
     lower.endsWith(".ppt") ||
@@ -185,6 +256,9 @@ function actionValue(ref: unknown, args: unknown) {
     return (
       extractFromUpload(args) ?? { hostOk: false, title: null, cards: [] }
     );
+  }
+  if (name === "extractCard:fromLink") {
+    return linkScan(args);
   }
   return { hostOk: false, title: null, cards: [] };
 }

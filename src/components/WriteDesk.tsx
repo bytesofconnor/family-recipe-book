@@ -25,6 +25,7 @@ import {
 import { kindFromUrl } from "../../convex/lib/sources";
 import { useToast } from "@/lib/toast";
 import { photosFromPicker, uploadContentType } from "@/lib/photoFiles";
+import { downscalePhoto } from "@/lib/downscalePhoto";
 import {
   CHANGE_MOVES,
   MAKES_HINT,
@@ -47,6 +48,84 @@ function messageFrom(caught: unknown, fallback: string): string {
   return fallback;
 }
 
+type ScanKind = "photo" | "file" | "link";
+
+type ReadFields = {
+  title: boolean;
+  ingredients: boolean;
+  steps: boolean;
+  story: boolean;
+};
+
+const EMPTY_READ: ReadFields = {
+  title: false,
+  ingredients: false,
+  steps: false,
+  story: false,
+};
+
+function titleFromFileName(fileName: string): string {
+  const stem = fileName.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim();
+  return stem.length >= 2 ? stem : "";
+}
+
+function scanSummary(input: {
+  kind: ScanKind;
+  photoCount: number;
+  many: number;
+  usedAi: boolean;
+  hasWords: boolean;
+  titleOnly: boolean;
+  partial: boolean;
+}): string {
+  if (input.many > 1) {
+    return input.usedAi
+      ? `Found ${input.many} recipes. Leave out any you don’t want, then put the rest in the book.`
+      : `Pulled ${input.many} recipes off the file. Check them before they go in.`;
+  }
+  if (input.photoCount > 1) {
+    if (input.usedAi && (input.hasWords || input.titleOnly)) {
+      return "Read across the photos. The first one is the cover. Change anything that's wrong.";
+    }
+    if (input.hasWords) {
+      return `Uploaded ${input.photoCount} photos. The first one is the cover. Check the recipe before saving.`;
+    }
+    return `Uploaded ${input.photoCount} photos. The first one is the cover. Couldn't read words on them. You can still save it.`;
+  }
+  if (input.usedAi && input.hasWords && !input.partial && !input.titleOnly) {
+    const where =
+      input.kind === "link"
+        ? "the link"
+        : input.kind === "photo"
+          ? "the photo"
+          : "the file";
+    return `Filled in from ${where}. Change anything that's wrong.`;
+  }
+  if (input.titleOnly || input.partial) {
+    return "Filled in what I could read. Blank lines are fine.";
+  }
+  if (input.hasWords) {
+    return "Pulled the words off the file. Check them.";
+  }
+  if (input.kind === "link") {
+    return "Couldn't read words on this link. You can still save it.";
+  }
+  return "Couldn't read words on this. You can still save it.";
+}
+
+function ReadFromLine({ from, show }: { from: ScanKind | null; show: boolean }) {
+  if (!from || !show) {
+    return null;
+  }
+  const where =
+    from === "photo" ? "the photo" : from === "link" ? "the link" : "the file";
+  return (
+    <p className="mt-1 text-[15px] leading-6 text-ink-soft">
+      Read from {where}. Change it if it&apos;s wrong.
+    </p>
+  );
+}
+
 type ChangeDraft = ChangeRow & { id: string };
 
 type Screen = "choose" | "tray" | "card";
@@ -59,6 +138,7 @@ type DraftCard = {
   steps: string;
   sourceKind: SourceKind;
   sourceTitle: string;
+  notes: string;
   keep: boolean;
 };
 
@@ -86,6 +166,7 @@ export function WriteDesk({
   const attachPhoto = useMutation(api.photos.attach);
   const lookupCredit = useAction(api.sallyCredit.lookupCredit);
   const extractCard = useAction(api.extractCard.fromUpload);
+  const extractFromLink = useAction(api.extractCard.fromLink);
   const mine = useQuery(
     api.bakes.listMine,
     token || kitchenId ? writeAccess : "skip",
@@ -124,6 +205,8 @@ export function WriteDesk({
   >("idle");
   const [extracting, setExtracting] = useState(false);
   const [extractNote, setExtractNote] = useState<string | null>(null);
+  const [readFrom, setReadFrom] = useState<ScanKind | null>(null);
+  const [readFields, setReadFields] = useState<ReadFields>(EMPTY_READ);
   const [intakePhotoStorageIds, setIntakePhotoStorageIds] = useState<Id<"_storage">[]>([]);
   const [story, setStory] = useState("");
   const [bakedOn, setBakedOn] = useState(() =>
@@ -335,11 +418,122 @@ export function WriteDesk({
     };
   }, [lookupCredit, sourceKind, sourceUrl, titleTouched, token, kitchenId]);
 
+  const fieldSnap = useRef({
+    title: "",
+    ingredients: "",
+    steps: "",
+    story: "",
+    makes: "",
+    titleTouched: false,
+  });
+  fieldSnap.current = { title, ingredients, steps, story, makes, titleTouched };
+  const linkScan = useRef(extractFromLink);
+  linkScan.current = extractFromLink;
+
+  useEffect(() => {
+    if (intake !== "link" || kindFromUrl(sourceUrl) === "sally") {
+      return;
+    }
+    const url = sourceUrl.trim();
+    if (!/^https?:\/\//i.test(url) || url.length < 12) {
+      return;
+    }
+    let cancelled = false;
+    const handle = window.setTimeout(() => {
+      setExtractNote("Reading that link…");
+      void linkScan.current({ ...writeAccess, url })
+        .then((result) => {
+          if (cancelled) {
+            return;
+          }
+          const card = result.cards[0];
+          const empty =
+            !card ||
+            (card.title.trim().length < 2 &&
+              card.ingredients.length === 0 &&
+              card.steps.length === 0 &&
+              (card.notes ?? "").trim().length === 0);
+          if (result.skipped || empty) {
+            if (result.skipped) {
+              setExtractNote((note) =>
+                note === "Reading that link…" ? null : note,
+              );
+              return;
+            }
+            setReadFrom(null);
+            setReadFields(EMPTY_READ);
+            setExtractNote(
+              "Couldn't read words on this link. You can still save it.",
+            );
+            return;
+          }
+          const snap = fieldSnap.current;
+          const draft = draftsFromExtract([card])[0];
+          if (!draft) {
+            return;
+          }
+          const filled = { ...EMPTY_READ };
+          if (
+            !snap.titleTouched &&
+            snap.title.trim().length < 2 &&
+            draft.title.trim().length >= 2
+          ) {
+            setTitle(draft.title);
+            filled.title = true;
+          }
+          if (snap.makes.trim().length === 0 && draft.makes.trim().length > 0) {
+            setMakes(draft.makes);
+          }
+          if (
+            snap.ingredients.trim().length === 0 &&
+            draft.ingredients.trim().length > 0
+          ) {
+            setIngredients(draft.ingredients);
+            filled.ingredients = true;
+          }
+          if (snap.steps.trim().length === 0 && draft.steps.trim().length > 0) {
+            setSteps(draft.steps);
+            filled.steps = true;
+          }
+          if (snap.story.trim().length === 0 && draft.notes.trim().length > 0) {
+            setStory(draft.notes);
+            filled.story = true;
+          }
+          const hasWords = filled.ingredients || filled.steps || filled.story;
+          setReadFrom(filled.title || hasWords ? "link" : null);
+          setReadFields(filled);
+          setExtractNote(
+            scanSummary({
+              kind: "link",
+              photoCount: 1,
+              many: 1,
+              usedAi: result.usedAi,
+              hasWords,
+              titleOnly: filled.title && !hasWords,
+              partial: hasWords && (!filled.ingredients || !filled.steps),
+            }),
+          );
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setExtractNote(
+              "Couldn't read words on this link. You can still save it.",
+            );
+          }
+        });
+    }, 700);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+  }, [intake, kitchenId, sourceUrl, token]);
+
   function applyCardToForm(card: DraftCard) {
     setTitle(card.title);
     setMakes(card.makes);
     setIngredients(card.ingredients);
     setSteps(card.steps);
+    setStory(card.notes);
     setSourceKind(card.sourceKind);
     setSourceTitle(card.sourceTitle);
   }
@@ -350,6 +544,7 @@ export function WriteDesk({
       makes,
       ingredients,
       steps,
+      notes: story,
       sourceKind,
       sourceTitle,
       keep,
@@ -362,6 +557,7 @@ export function WriteDesk({
       makes: string;
       ingredients: string[];
       steps: string[];
+      notes?: string;
       sourceKind: SourceKind;
       sourceTitle: string;
     }>,
@@ -371,36 +567,121 @@ export function WriteDesk({
       makes: card.makes,
       ingredients: card.ingredients.join("\n"),
       steps: card.steps.join("\n"),
+      notes: card.notes?.trim() ?? "",
       sourceKind: card.sourceKind,
       sourceTitle: card.sourceTitle,
       keep: true,
     }));
   }
 
+  function finishScan(input: {
+    cards: Array<{
+      title: string;
+      makes: string;
+      ingredients: string[];
+      steps: string[];
+      notes?: string;
+      sourceKind: SourceKind;
+      sourceTitle: string;
+    }>;
+    usedAi: boolean;
+    kind: ScanKind;
+    fileName: string;
+    photoCount: number;
+  }) {
+    const drafts = draftsFromExtract(input.cards);
+    const scanned = drafts[0];
+    const fallback = input.kind === "link" ? "" : titleFromFileName(input.fileName);
+    const card: DraftCard = scanned
+      ? {
+          ...scanned,
+          title:
+            scanned.title.trim().length >= 2 ? scanned.title : fallback || scanned.title,
+        }
+      : {
+          title: fallback,
+          makes: "",
+          ingredients: "",
+          steps: "",
+          notes: "",
+          sourceKind: "original",
+          sourceTitle: "",
+          keep: true,
+        };
+    const pileCards = scanned
+      ? drafts.map((draft, index) => (index === 0 ? card : draft))
+      : [card];
+    setPile(pileCards);
+    setEditingIndex(null);
+    applyCardToForm(card);
+    const ingredientCount = linesFromText(card.ingredients).length;
+    const stepCount = linesFromText(card.steps).length;
+    const hasNotes = card.notes.trim().length > 0;
+    const hasWords = ingredientCount > 0 || stepCount > 0 || hasNotes;
+    const filenameTitle = titleFromFileName(input.fileName);
+    const titleIsOnlyTheFile =
+      !input.usedAi &&
+      !hasWords &&
+      filenameTitle.length > 0 &&
+      scanned !== undefined &&
+      scanned.title.trim().toLowerCase() === filenameTitle.toLowerCase();
+    const titleFromScan = Boolean(
+      scanned && scanned.title.trim().length >= 2 && !titleIsOnlyTheFile,
+    );
+    setReadFrom(titleFromScan || hasWords ? input.kind : null);
+    setReadFields({
+      title: titleFromScan,
+      ingredients: Boolean(scanned) && ingredientCount > 0,
+      steps: Boolean(scanned) && stepCount > 0,
+      story: Boolean(scanned) && hasNotes,
+    });
+    setExtractNote(
+      scanSummary({
+        kind: input.kind,
+        photoCount: input.photoCount,
+        many: scanned ? drafts.length : 1,
+        usedAi: input.usedAi,
+        hasWords,
+        titleOnly: input.usedAi && titleFromScan && !hasWords,
+        partial:
+          input.usedAi &&
+          hasWords &&
+          (ingredientCount === 0 || stepCount === 0),
+      }),
+    );
+    setScreen(scanned && drafts.length > 1 ? "tray" : "card");
+  }
+
   async function ingestMultiplePhotos(files: File[]) {
     setError(null);
     setExtracting(true);
-    setExtractNote(`Uploading ${files.length} photo${files.length > 1 ? 's' : ''}…`);
+    setExtractNote(
+      `Uploading ${files.length} photo${files.length > 1 ? "s" : ""}…`,
+    );
     setIntake("photo");
     setSourceKind("original");
-    
+
     const uploadedIds: Id<"_storage">[] = [];
-    
+
     try {
-      for (const [index, file] of files.entries()) {
-        setExtractNote(`Uploading photo ${index + 1} of ${files.length}…`);
-        
+      const prepared: File[] = [];
+      for (const file of files) {
+        prepared.push(await downscalePhoto(file));
+      }
+      for (const [index, file] of prepared.entries()) {
+        setExtractNote(`Uploading photo ${index + 1} of ${prepared.length}…`);
+
         const uploadUrl = await generateUploadUrl(writeAccess);
         const uploaded = await fetch(uploadUrl, {
           method: "POST",
           headers: { "Content-Type": uploadContentType(file) },
           body: file,
         });
-        
+
         if (!uploaded.ok) {
           throw new Error(`Photo ${index + 1} didn't upload. Try again.`);
         }
-        
+
         const { storageId } = (await uploaded.json()) as {
           storageId: Id<"_storage">;
         };
@@ -414,36 +695,39 @@ export function WriteDesk({
         if (current) {
           URL.revokeObjectURL(current);
         }
-        return URL.createObjectURL(files[0]!);
+        return URL.createObjectURL(prepared[0]!);
       });
       setOriginStorageId(uploadedIds[0]!);
 
-      setExtractNote("Reading the first photo…");
-      const extracted = await extractCard({
-        ...writeAccess,
-        storageId: uploadedIds[0]!,
-        fileName: files[0]!.name,
-        mimeType: uploadContentType(files[0]!),
-      });
-      
-      const drafts = draftsFromExtract(extracted.cards);
-      setPile(drafts);
-      setEditingIndex(null);
-      const first = drafts[0];
-      if (first) {
-        applyCardToForm(first);
-      }
-      
       setExtractNote(
-        uploadedIds.length > 1
-          ? `Uploaded ${uploadedIds.length} photos. The first one is the cover. Check the recipe before saving.`
-          : extracted.usedAi
-            ? "Check this. Fix anything it got wrong."
-            : first && linesFromText(first.ingredients).length > 0
-              ? "Pulled the words off the photo. Check them."
-              : "Saved the photo. Add what went in so you can find it later.",
+        prepared.length > 1 ? "Reading the photos…" : "Reading the photo…",
       );
-      setScreen("card");
+      let cards: Parameters<typeof finishScan>[0]["cards"] = [];
+      let usedAi = false;
+      try {
+        const extracted = await extractCard({
+          ...writeAccess,
+          storageId: uploadedIds[0]!,
+          fileName: prepared[0]!.name,
+          mimeType: uploadContentType(prepared[0]!),
+          images: prepared.map((file, index) => ({
+            storageId: uploadedIds[index]!,
+            fileName: file.name,
+            mimeType: uploadContentType(file),
+          })),
+        });
+        cards = extracted.cards;
+        usedAi = extracted.usedAi;
+      } catch (caught) {
+        console.error(caught);
+      }
+      finishScan({
+        cards,
+        usedAi,
+        kind: "photo",
+        fileName: prepared[0]!.name,
+        photoCount: prepared.length,
+      });
     } catch (caught) {
       setError(messageFrom(caught, "Couldn't upload the photos."));
       setIntakePhotoStorageIds([]);
@@ -458,7 +742,10 @@ export function WriteDesk({
     setExtractNote("Reading the file…");
     setIntake(nextIntake);
     setSourceKind("original");
-    const contentType = uploadContentType(file);
+    const prepared = uploadContentType(file).startsWith("image/")
+      ? await downscalePhoto(file)
+      : file;
+    const contentType = uploadContentType(prepared);
     const isImage = contentType.startsWith("image/");
     setOriginIsImage(isImage);
     if (isImage) {
@@ -466,7 +753,7 @@ export function WriteDesk({
         if (current) {
           URL.revokeObjectURL(current);
         }
-        return URL.createObjectURL(file);
+        return URL.createObjectURL(prepared);
       });
     } else {
       setOriginPreview((current) => {
@@ -481,7 +768,7 @@ export function WriteDesk({
       const uploaded = await fetch(uploadUrl, {
         method: "POST",
         headers: { "Content-Type": contentType },
-        body: file,
+        body: prepared,
       });
       if (!uploaded.ok) {
         throw new Error("That file didn't upload. Try one more time.");
@@ -490,32 +777,28 @@ export function WriteDesk({
         storageId: Id<"_storage">;
       };
       setOriginStorageId(storageId);
-      const extracted = await extractCard({
-        ...writeAccess,
-        storageId,
-        fileName: file.name,
-        mimeType: contentType,
-      });
-      const drafts = draftsFromExtract(extracted.cards);
-      setPile(drafts);
-      setEditingIndex(null);
-      const first = drafts[0];
-      if (first) {
-        applyCardToForm(first);
+      setExtractNote(isImage ? "Reading the photo…" : "Reading the file…");
+      let cards: Parameters<typeof finishScan>[0]["cards"] = [];
+      let usedAi = false;
+      try {
+        const extracted = await extractCard({
+          ...writeAccess,
+          storageId,
+          fileName: prepared.name,
+          mimeType: contentType,
+        });
+        cards = extracted.cards;
+        usedAi = extracted.usedAi;
+      } catch (caught) {
+        console.error(caught);
       }
-      const many = drafts.length > 1;
-      setExtractNote(
-        many
-          ? extracted.usedAi
-            ? `Found ${drafts.length} recipes. Leave out any you don’t want, then put the rest in the book.`
-            : `Pulled ${drafts.length} recipes off the file. Check them before they go in.`
-          : extracted.usedAi
-            ? "Check this. Fix anything it got wrong."
-            : first && linesFromText(first.ingredients).length > 0
-              ? "Pulled the words off the file. Check them."
-              : "Saved the file. Add what went in so you can find it later.",
-      );
-      setScreen(many ? "tray" : "card");
+      finishScan({
+        cards,
+        usedAi,
+        kind: isImage ? "photo" : "file",
+        fileName: prepared.name,
+        photoCount: isImage ? 1 : 0,
+      });
     } catch (caught) {
       setError(messageFrom(caught, "Couldn't read that file."));
     } finally {
@@ -561,6 +844,8 @@ export function WriteDesk({
     setTitleTouched(false);
     setLookupState("idle");
     setExtractNote(null);
+    setReadFrom(null);
+    setReadFields(EMPTY_READ);
     setStory("");
     setBakedOn(new Date().toISOString().slice(0, 10));
     setShowDate(false);
@@ -669,14 +954,10 @@ export function WriteDesk({
   async function addKeptCards() {
     const kept = pile.filter(
       (draft) =>
-        draft.keep &&
-        draft.title.trim().length >= 2 &&
-        linesFromText(draft.ingredients).length > 0,
+        draft.keep && draft.title.trim().length >= 2,
     );
     if (kept.length === 0) {
-      setError(
-        "Keep at least one card with a name and what went in.",
-      );
+      setError("Keep at least one card with a name.");
       return;
     }
     setError(null);
@@ -687,7 +968,7 @@ export function WriteDesk({
         const result = await saveBake({
           ...writeAccess,
           title: draft.title,
-          story: "",
+          story: draft.notes,
           sourceTitle: draft.sourceTitle,
           sourceUrl: "",
           sourceKind: draft.sourceKind,
@@ -733,18 +1014,6 @@ export function WriteDesk({
       if (sourceKind === "sally" && !isSallyUrl(sourceUrl)) {
         setError("Paste Sally's link so the credit stays with her.");
         document.getElementById("sourceUrl")?.focus();
-        return;
-      }
-      if (linesFromText(ingredients).length === 0) {
-        setError(
-          "Add what went in — even a short list — so you can search an ingredient later.",
-        );
-        document.getElementById("ingredients")?.focus();
-        return;
-      }
-      if (story.trim().length < 2) {
-        setError("Say how it went — even a line or two.");
-        document.getElementById("story")?.focus();
         return;
       }
     }
@@ -1132,7 +1401,7 @@ export function WriteDesk({
                 : "Add a different way"}
           </button>
           {extractNote ? (
-            <p className="mt-3 text-[18px] leading-7 text-ink-soft">
+            <p role="status" className="mt-3 text-[18px] leading-7 text-ink-soft">
               {extractNote}
             </p>
           ) : null}
@@ -1241,6 +1510,7 @@ export function WriteDesk({
                 enterKeyHint="next"
                 className="bake-leaf-title write-desk-title"
               />
+              <ReadFromLine from={readFrom} show={readFields.title} />
 
               <div>
                 <p className="text-[16px] font-medium leading-6 text-ink-soft">
@@ -1330,9 +1600,9 @@ export function WriteDesk({
                   value={story}
                   onChange={(event) => setStory(event.target.value)}
                   placeholder="Always a hit! Sunday morning…"
-                  required
                   className="mt-2 min-h-28 w-full"
                 />
+                <ReadFromLine from={readFrom} show={readFields.story} />
               </div>
             </div>
           </header>
@@ -1369,8 +1639,9 @@ export function WriteDesk({
                   What went in
                 </Label>
                 <p className="mt-1 text-[15px] leading-6 text-ink-soft">
-                  One per line — so you can search later.
+                  One per line — so you can search later. Leave this blank if the photo is enough.
                 </p>
+                <ReadFromLine from={readFrom} show={readFields.ingredients} />
                 <Textarea
                   id="ingredients"
                   value={ingredients}
@@ -1389,8 +1660,9 @@ export function WriteDesk({
                   How
                 </Label>
                 <p className="mt-1 text-[15px] leading-6 text-ink-soft">
-                  One step per line.
+                  One step per line. Leave this blank if you don't have them yet.
                 </p>
+                <ReadFromLine from={readFrom} show={readFields.steps} />
                 <Textarea
                   id="steps"
                   value={steps}

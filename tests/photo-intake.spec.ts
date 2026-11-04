@@ -75,10 +75,10 @@ test.describe("photo intake", () => {
 
     await expect(
       page.getByText(
-        "Uploaded 3 photos. The first one is the cover. Check the recipe before saving.",
+        "Uploaded 3 photos. The first one is the cover. Couldn't read words on them. You can still save it.",
       ),
     ).toBeVisible();
-    await expect(page.getByRole("img", { name: "Recipe photo" })).toBeVisible();
+    await expect(page.getByRole("img", { name: "counter" })).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Put it in the book" }),
     ).toBeVisible();
@@ -113,7 +113,7 @@ test.describe("photo intake", () => {
     expect(types).toEqual(["counter.jpg:image/jpeg", "IMG_2044.HEIC:"]);
     await expect(
       page.getByText(
-        "Uploaded 2 photos. The first one is the cover. Check the recipe before saving.",
+        "Uploaded 2 photos. The first one is the cover. Couldn't read words on them. You can still save it.",
       ),
     ).toBeVisible();
   });
@@ -127,9 +127,9 @@ test.describe("photo intake", () => {
     await page.getByLabel("Recipe photos").setInputFiles(PHOTOS[0]!);
 
     await expect(
-      page.getByText("Saved the file. Add what went in so you can find it later."),
+      page.getByText("Couldn't read words on this. You can still save it."),
     ).toBeVisible();
-    await expect(page.getByRole("img", { name: "Recipe photo" })).toBeVisible();
+    await expect(page.getByRole("img", { name: "counter" })).toBeVisible();
   });
 
   test("mobile: a failed upload says so on the choose screen", async ({
@@ -169,7 +169,7 @@ test.describe("photo intake", () => {
     });
 
     await expect(
-      page.getByText("Saved the file. Add what went in so you can find it later."),
+      page.getByText("Couldn't read words on this. You can still save it."),
     ).toBeVisible();
   });
 
