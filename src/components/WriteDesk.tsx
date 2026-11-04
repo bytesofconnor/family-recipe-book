@@ -387,7 +387,6 @@ export function WriteDesk({
     const uploadedIds: Id<"_storage">[] = [];
     
     try {
-      // Upload all photos
       for (const [index, file] of files.entries()) {
         setExtractNote(`Uploading photo ${index + 1} of ${files.length}…`);
         
@@ -407,11 +406,9 @@ export function WriteDesk({
         };
         uploadedIds.push(storageId);
       }
-      
-      // Store the uploaded photo IDs for use when saving
+
       setIntakePhotoStorageIds(uploadedIds);
-      
-      // Set preview to first photo
+
       setOriginIsImage(true);
       setOriginPreview((current) => {
         if (current) {
@@ -420,8 +417,7 @@ export function WriteDesk({
         return URL.createObjectURL(files[0]!);
       });
       setOriginStorageId(uploadedIds[0]!);
-      
-      // Extract text from first photo only
+
       setExtractNote("Reading the first photo…");
       const extracted = await extractCard({
         ...writeAccess,
