@@ -2,6 +2,7 @@
 # does not start that push trigger, so a successful PR Checks run resolves
 # the squash commit and deploys it once. Auto-merge calls this workflow
 # directly when the squash finishes inside the pull_request job.
+# workflow_dispatch redeploys the selected ref with this same job.
 
 name: Deploy to Vercel
 
@@ -9,6 +10,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
   workflow_call:
     inputs:
       sha:
@@ -124,6 +126,7 @@ jobs:
       (
         (github.event_name == 'push' && github.actor != 'github-actions[bot]' && github.actor != 'app/github-actions') ||
         github.event_name == 'workflow_call' ||
+        github.event_name == 'workflow_dispatch' ||
         (github.event_name == 'workflow_run' && needs.resolve.outputs.sha != '')
       )
     runs-on: ubuntu-latest
