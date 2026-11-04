@@ -882,7 +882,7 @@ export function WriteDesk({
     const uploadUrl = await generateUploadUrl(writeAccess);
     const response = await fetch(uploadUrl, {
       method: "POST",
-      headers: { "Content-Type": file.type },
+      headers: { "Content-Type": uploadContentType(file) },
       body: file,
     });
     if (!response.ok) {
@@ -1116,6 +1116,7 @@ export function WriteDesk({
       ) : (
         <form
           className="write-desk-leaf mt-3 flex flex-col"
+          noValidate
           onSubmit={handleSubmit}
           aria-describedby={error ? formErrorId : undefined}
         >
@@ -1297,6 +1298,11 @@ export function WriteDesk({
                     <p className="mt-2 text-[17px] text-ink-soft">
                       Sally calls this{" "}
                       <span className="text-ink">{sourceTitle}</span>.
+                    </p>
+                  ) : null}
+                  {lookupState === "miss" ? (
+                    <p role="status" className="mt-2 text-[17px] text-ink-soft">
+                      Couldn't find a title on that link. Name it yourself.
                     </p>
                   ) : null}
                 </div>
