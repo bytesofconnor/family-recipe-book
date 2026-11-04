@@ -86,6 +86,37 @@ describe("decideDeploy", () => {
     ).toEqual({ sha: oid });
   });
 
+  it("deploys when the merge is recorded as app/github-actions", () => {
+    expect(
+      decideDeploy({
+        eventName: "pull_request",
+        before: pull(),
+        after: pull({
+          state: "MERGED",
+          mergedAt: "2026-10-23T15:01:00.000Z",
+          mergeCommitOid: oid,
+          mergedBy: "app/github-actions",
+        }),
+        checksUpdatedAt: null,
+      }),
+    ).toEqual({ sha: oid });
+
+    const merged = pull({
+      state: "MERGED",
+      mergedAt: "2026-10-23T15:01:00.000Z",
+      mergeCommitOid: oid,
+      mergedBy: "app/github-actions",
+    });
+    expect(
+      decideDeploy({
+        eventName: "workflow_run",
+        before: merged,
+        after: merged,
+        checksUpdatedAt,
+      }),
+    ).toEqual({ sha: oid });
+  });
+
   it("deploys when workflow_run finds a token merge inside the checks window", () => {
     const merged = pull({
       state: "MERGED",
