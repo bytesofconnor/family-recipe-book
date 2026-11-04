@@ -1,10 +1,16 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
-/**
- * Photo intake on the write desk. The a11y fixture stands in for Convex.
- * Upload responses are stubbed so the test checks what the baker sees
- * after choosing files, on a phone-sized window and on a desktop window.
- */
+async function expectNoSeriousAxe(page: Page) {
+  const result = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .analyze();
+  const blocking = result.violations.filter(
+    (violation) =>
+      violation.impact === "serious" || violation.impact === "critical",
+  );
+  expect(blocking, JSON.stringify(blocking, null, 2)).toEqual([]);
+}
 
 const JPEG = Buffer.from(
   "/9j/4AAQSkZJRgABAQAAAQABAAD/2wCEAAkGBxMTEhUTExMWFRUVFRcVFRcVFRUVFRUVFRUWFhUVFRUYHSggGBolGxUVITEhJSsrLi4uFx8zODMtNygtLisBCgoKDg0OGhAQGy0lHyUtLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLf/AABEIAAMBAAMBIgACEQEDEQH/xAAbAAABBQEBAAAAAAAAAAAAAAADAAIEBQYHAf/EABQBAQAAAAAAAAAAAAAAAAAAAAD/xAAUAQEAAAAAAAAAAAAAAAAAAAAA/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8A6gAA//9k=",
@@ -79,6 +85,37 @@ test.describe("photo intake", () => {
     await expect(
       page.getByText("Put it in the book however you already have it"),
     ).toHaveCount(0);
+    await expectNoSeriousAxe(page);
+  });
+
+  test("mobile: a HEIC photo with no type still opens the card", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await stubUpload(page, 200);
+    await openDesk(page);
+
+    await page.getByRole("button", { name: "Take or choose photos" }).click();
+    await expect(page.getByLabel("Recipe photos")).toHaveAttribute("multiple", "");
+    const types = await page.evaluate(() => {
+      const input = document.querySelector('input[aria-label="Recipe photos"]');
+      if (!(input instanceof HTMLInputElement)) {
+        throw new Error("missing photo input");
+      }
+      const transfer = new DataTransfer();
+      transfer.items.add(new File(["jpeg"], "counter.jpg", { type: "image/jpeg" }));
+      transfer.items.add(new File(["heic"], "IMG_2044.HEIC", { type: "" }));
+      input.files = transfer.files;
+      const seen = [...(input.files ?? [])].map((file) => `${file.name}:${file.type}`);
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      return seen;
+    });
+    expect(types).toEqual(["counter.jpg:image/jpeg", "IMG_2044.HEIC:"]);
+    await expect(
+      page.getByText(
+        "Uploaded 2 photos. The first one is the cover. Check the recipe before saving.",
+      ),
+    ).toBeVisible();
   });
 
   test("desktop: one photo opens the recipe card", async ({ page }) => {
@@ -114,6 +151,7 @@ test.describe("photo intake", () => {
     await expect(
       page.getByRole("button", { name: "Put it in the book" }),
     ).toHaveCount(0);
+    await expectNoSeriousAxe(page);
   });
 
   test("mobile: a PDF still opens the recipe card", async ({ page }) => {

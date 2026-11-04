@@ -24,6 +24,7 @@ import {
 } from "@/lib/sources";
 import { kindFromUrl } from "../../convex/lib/sources";
 import { useToast } from "@/lib/toast";
+import { photosFromPicker, uploadContentType } from "@/lib/photoFiles";
 import {
   CHANGE_MOVES,
   MAKES_HINT,
@@ -35,6 +36,16 @@ import {
   trayFor,
   type ChangeRow,
 } from "@/lib/writeDesk";
+
+function messageFrom(caught: unknown, fallback: string): string {
+  if (caught instanceof TypeError) {
+    return fallback;
+  }
+  if (caught instanceof Error && caught.message.length > 0) {
+    return caught.message;
+  }
+  return fallback;
+}
 
 type ChangeDraft = ChangeRow & { id: string };
 
@@ -258,6 +269,7 @@ export function WriteDesk({
     setOriginIsImage(Boolean(editBake.photoUrl));
     setOriginPreview(editBake.photoUrl);
     setPhotoFile(null);
+    setIntakePhotoStorageIds([]);
     setCoverCleared(false);
     setPile([]);
     setEditingIndex(null);
@@ -382,7 +394,7 @@ export function WriteDesk({
         const uploadUrl = await generateUploadUrl(writeAccess);
         const uploaded = await fetch(uploadUrl, {
           method: "POST",
-          headers: { "Content-Type": file.type || "application/octet-stream" },
+          headers: { "Content-Type": uploadContentType(file) },
           body: file,
         });
         
@@ -415,7 +427,7 @@ export function WriteDesk({
         ...writeAccess,
         storageId: uploadedIds[0]!,
         fileName: files[0]!.name,
-        mimeType: files[0]!.type || "image/jpeg",
+        mimeType: uploadContentType(files[0]!),
       });
       
       const drafts = draftsFromExtract(extracted.cards);
@@ -437,11 +449,7 @@ export function WriteDesk({
       );
       setScreen("card");
     } catch (caught) {
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : "Couldn't upload the photos.",
-      );
+      setError(messageFrom(caught, "Couldn't upload the photos."));
       setIntakePhotoStorageIds([]);
     } finally {
       setExtracting(false);
@@ -454,7 +462,8 @@ export function WriteDesk({
     setExtractNote("Reading the file…");
     setIntake(nextIntake);
     setSourceKind("original");
-    const isImage = file.type.startsWith("image/");
+    const contentType = uploadContentType(file);
+    const isImage = contentType.startsWith("image/");
     setOriginIsImage(isImage);
     if (isImage) {
       setOriginPreview((current) => {
@@ -475,7 +484,7 @@ export function WriteDesk({
       const uploadUrl = await generateUploadUrl(writeAccess);
       const uploaded = await fetch(uploadUrl, {
         method: "POST",
-        headers: { "Content-Type": file.type || "application/octet-stream" },
+        headers: { "Content-Type": contentType },
         body: file,
       });
       if (!uploaded.ok) {
@@ -489,7 +498,7 @@ export function WriteDesk({
         ...writeAccess,
         storageId,
         fileName: file.name,
-        mimeType: file.type || "application/octet-stream",
+        mimeType: contentType,
       });
       const drafts = draftsFromExtract(extracted.cards);
       setPile(drafts);
@@ -512,11 +521,7 @@ export function WriteDesk({
       );
       setScreen(many ? "tray" : "card");
     } catch (caught) {
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : "Couldn't read that file.",
-      );
+      setError(messageFrom(caught, "Couldn't read that file."));
     } finally {
       setExtracting(false);
     }
@@ -571,6 +576,7 @@ export function WriteDesk({
     setOriginIsImage(false);
     setOriginPreview(null);
     setPhotoFile(null);
+    setIntakePhotoStorageIds([]);
     setPile([]);
     setEditingIndex(null);
     setEditingBakeId(null);
@@ -912,29 +918,38 @@ export function WriteDesk({
             : "image/*,.pdf,.ppt,.pptx,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain"
         }
         multiple={intake === "photo"}
-        capture={intake === "photo" ? "environment" : undefined}
         aria-label={
           intake === "photo" ? "Recipe photos" : "Recipe file"
         }
         className="sr-only"
         onChange={(event) => {
-          const files = event.target.files;
-          event.target.value = "";
-          
-          if (!files || files.length === 0) return;
-          
-          // For photo intake, handle multiple files
-          if (intake === "photo" && files.length > 1) {
-            const photoFiles = Array.from(files).filter(f => f.type.startsWith("image/"));
-            if (photoFiles.length > 0) {
-              void ingestMultiplePhotos(photoFiles);
+          const picked = Array.from(event.currentTarget.files ?? []);
+          event.currentTarget.value = "";
+          if (picked.length === 0) {
+            setError("No photo came through. Try choosing it again.");
+            return;
+          }
+          if (intake === "photo") {
+            const photos = photosFromPicker(picked);
+            if (photos.length === 0) {
+              setError(
+                "Those aren't photos. Choose a picture from your camera roll.",
+              );
+              return;
             }
-          } else {
-            // Single file or PDF/PowerPoint intake
-            const file = files[0];
-            if (file) {
-              void ingestFile(file, intake === "file" ? "file" : "photo");
+            if (photos.length > 1) {
+              void ingestMultiplePhotos(photos);
+              return;
             }
+            const only = photos[0];
+            if (only) {
+              void ingestFile(only, "photo");
+            }
+            return;
+          }
+          const file = picked[0];
+          if (file) {
+            void ingestFile(file, intake === "file" ? "file" : "photo");
           }
         }}
       />
@@ -950,10 +965,15 @@ export function WriteDesk({
             recipe is enough. A whole PowerPoint of recipes is fine too — you’ll
             see the pile before anything goes in.
           </p>
+          {error ? (
+            <p role="alert" className="mt-6 text-[17px] text-cinnamon-deep">
+              {error}
+            </p>
+          ) : null}
           {extracting ? (
             <p role="status" className="mt-8 text-[18px] text-ink-soft">
-              Reading the file. If there are a lot of recipes, this can take a
-              minute.
+              {extractNote ??
+                "Reading the file. If there are a lot of recipes, this can take a minute."}
             </p>
           ) : (
             <div className="mt-8 flex flex-col items-start gap-3">
