@@ -161,10 +161,17 @@ async function start(page: Page) {
   return { leaked, upload };
 }
 
-async function saveFromCard(page: Page, title: string, leaked: string[]) {
-  const story = page.getByLabel("How it went");
-  if ((await story.inputValue()).trim().length < 2) {
-    await story.fill("Always a hit on a weeknight.");
+async function saveFromCard(
+  page: Page,
+  title: string,
+  leaked: string[],
+  options?: { fillStory?: boolean },
+) {
+  if (options?.fillStory !== false) {
+    const story = page.getByLabel("How it went");
+    if ((await story.inputValue()).trim().length < 2) {
+      await story.fill("Always a hit on a weeknight.");
+    }
   }
   await page.getByRole("button", { name: "Put it in the book" }).click();
   await expectSaved(page, title, leaked);
@@ -343,7 +350,7 @@ test.describe("mobile recipe intake", () => {
     await page.getByRole("checkbox", { name: "Keep Weeknight rice" }).click();
     await page.getByRole("button", { name: "Put 0 in the book" }).click();
     await expect(page.getByRole("alert")).toHaveText(
-      "Keep at least one card with a name and what went in.",
+      "Keep at least one card with a name.",
     );
 
     await page.getByRole("checkbox", { name: "Leave out Weeknight rice" }).click();
@@ -480,17 +487,8 @@ test.describe("mobile recipe intake", () => {
     );
     await page.getByLabel("What do you call it?").fill("Weeknight toast");
     await page.getByRole("button", { name: "Put it in the book" }).click();
-    await expect(page.getByRole("alert")).toHaveText(/Add what went in/);
-    await page.getByLabel("What went in").fill("bread\nbutter");
-    await page.getByRole("button", { name: "Put it in the book" }).click();
-    await expect(page.getByRole("alert")).toHaveText(
-      "Say how it went — even a line or two.",
-    );
-    await page.getByLabel("How it went").fill("Crisp and good.");
-    await page.getByRole("button", { name: "Put it in the book" }).click();
     await expectSaved(page, "Weeknight toast", leaked);
-    await expect(page.getByText("butter", { exact: true })).toBeVisible();
-    await expect(page.getByText("Crisp and good.")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "What went in" })).toHaveCount(0);
     await expectNoSeriousAxe(page);
   });
 
@@ -514,5 +512,168 @@ test.describe("mobile recipe intake", () => {
     await saveFromCard(page, "Card photo loaf", leaked);
     await expect(page.getByRole("img", { name: "Card photo loaf" })).toBeVisible();
     expect(upload.types).toContain("image/heic");
+  });
+
+  test("a photo scan fills the card, stays editable, and saves", async ({
+    page,
+  }) => {
+    const { leaked } = await start(page);
+    await choosePhotos(page, {
+      name: "scan-full.jpg",
+      mimeType: "image/jpeg",
+      buffer: JPEG,
+    });
+    await expect(
+      page.getByText("Filled in from the photo. Change anything that's wrong."),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Read from the photo. Change it if it's wrong."),
+    ).toHaveCount(4);
+    await expect(page.getByLabel("What do you call it?")).toHaveValue(
+      "Sunday stew",
+    );
+    await expect(page.getByLabel("What went in")).toHaveValue("lamb\nonion");
+    await expect(page.locator("#steps")).toHaveValue("Simmer");
+    await expect(page.getByLabel("How it went")).toHaveValue(
+      "Better the next day",
+    );
+    await page.getByLabel("What went in").fill("beef\nonion");
+    await expectNoSeriousAxe(page);
+    await saveFromCard(page, "Sunday stew", leaked, { fillStory: false });
+    await expect(page.getByText("beef", { exact: true })).toBeVisible();
+    await expect(page.getByText("Better the next day")).toBeVisible();
+    await expect(page.getByText("Simmer", { exact: true })).toBeVisible();
+  });
+
+  test("a partial scan leaves the blank lines empty and still saves", async ({
+    page,
+  }) => {
+    const { leaked } = await start(page);
+    await choosePhotos(page, {
+      name: "scan-partial.jpg",
+      mimeType: "image/jpeg",
+      buffer: JPEG,
+    });
+    await expect(
+      page.getByText("Filled in what I could read. Blank lines are fine."),
+    ).toBeVisible();
+    await expect(page.getByLabel("What do you call it?")).toHaveValue(
+      "Half a card",
+    );
+    await expect(page.getByLabel("What went in")).toHaveValue("");
+    await expect(page.locator("#steps")).toHaveValue("");
+    await expect(
+      page.getByText("Read from the photo. Change it if it's wrong."),
+    ).toHaveCount(1);
+    await saveFromCard(page, "Half a card", leaked, { fillStory: false });
+    await expect(
+      page.getByRole("heading", { name: "What went in" }),
+    ).toHaveCount(0);
+  });
+
+  test("a scan that finds nothing still saves the photo", async ({ page }) => {
+    const { leaked } = await start(page);
+    await choosePhotos(page, {
+      name: "scan-fail.jpg",
+      mimeType: "image/jpeg",
+      buffer: JPEG,
+    });
+    await expect(
+      page.getByText("Couldn't read words on this. You can still save it."),
+    ).toBeVisible();
+    await expect(page.getByLabel("What do you call it?")).toHaveValue("scan fail");
+    await expect(page.getByLabel("What went in")).toHaveValue("");
+    await expect(
+      page.getByText("Read from the photo. Change it if it's wrong."),
+    ).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Put it in the book" })).toBeEnabled();
+    await saveFromCard(page, "scan fail", leaked, { fillStory: false });
+    await expect(page.getByRole("img", { name: "scan fail" })).toBeVisible();
+  });
+
+  test("a scan that errors still opens an editable card", async ({ page }) => {
+    const { leaked } = await start(page);
+    await choosePhotos(page, {
+      name: "scan-throw.jpg",
+      mimeType: "image/jpeg",
+      buffer: JPEG,
+    });
+    await expect(
+      page.getByText("Couldn't read words on this. You can still save it."),
+    ).toBeVisible();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(page.getByLabel("What do you call it?")).toHaveValue(
+      "scan throw",
+    );
+    await page.getByLabel("What do you call it?").fill("Quiet loaf");
+    await saveFromCard(page, "Quiet loaf", leaked, { fillStory: false });
+  });
+
+  test("several photos are read as one recipe", async ({ page }) => {
+    const { leaked } = await start(page);
+    await choosePhotos(page, [
+      { name: "scan-combine.jpg", mimeType: "image/jpeg", buffer: JPEG },
+      { name: "side.jpg", mimeType: "image/jpeg", buffer: JPEG },
+    ]);
+    await expect(
+      page.getByText(
+        "Read across the photos. The first one is the cover. Change anything that's wrong.",
+      ),
+    ).toBeVisible();
+    await expect(page.getByLabel("What do you call it?")).toHaveValue(
+      "Sunday stew",
+    );
+    await expect(page.getByLabel("What went in")).toHaveValue("lamb\npotato");
+    await saveFromCard(page, "Sunday stew", leaked, { fillStory: false });
+    await expect(page.getByText("lamb", { exact: true })).toBeVisible();
+    await expect(page.getByText("potato", { exact: true })).toBeVisible();
+  });
+
+  test("a link scan fills the card and still saves after an edit", async ({
+    page,
+  }) => {
+    const { leaked } = await start(page);
+    await page
+      .getByRole("button", { name: "Paste a link — Sally, TikTok, Pinterest" })
+      .click();
+    await page.locator("#sourceUrl").fill("https://recipes.example.com/scan-full");
+    await expect(
+      page.getByText("Filled in from the link. Change anything that's wrong."),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Read from the link. Change it if it's wrong."),
+    ).toHaveCount(4);
+    await expect(page.getByLabel("What do you call it?")).toHaveValue("Link stew");
+    await expect(page.getByLabel("What went in")).toHaveValue("beans\nstock");
+    await page.getByLabel("What went in").fill("beans\nkale");
+    await expect(
+      page.getByRole("button", { name: "Put it in the book" }),
+    ).toBeEnabled();
+    await saveFromCard(page, "Link stew", leaked, { fillStory: false });
+    await expect(page.getByText("kale", { exact: true })).toBeVisible();
+    await expect(page.getByText("From the page")).toBeVisible();
+  });
+
+  test("a link scan that finds nothing leaves the card empty and editable", async ({
+    page,
+  }) => {
+    const { leaked } = await start(page);
+    await page
+      .getByRole("button", { name: "Paste a link — Sally, TikTok, Pinterest" })
+      .click();
+    await page.locator("#sourceUrl").fill("https://recipes.example.com/scan-fail");
+    await expect(
+      page.getByText(
+        "Couldn't read words on this link. You can still save it.",
+      ),
+    ).toBeVisible();
+    await expect(page.getByLabel("What do you call it?")).toHaveValue("");
+    await expect(page.getByLabel("What went in")).toHaveValue("");
+    await expect(page.getByRole("button", { name: "Put it in the book" })).toBeEnabled();
+    await page.getByLabel("What do you call it?").fill("Quiet soup");
+    await saveFromCard(page, "Quiet soup", leaked, { fillStory: false });
+    await expect(
+      page.getByRole("heading", { name: "What went in" }),
+    ).toHaveCount(0);
   });
 });

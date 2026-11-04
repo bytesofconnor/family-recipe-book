@@ -5,6 +5,7 @@ export type ExtractedCard = {
   makes: string;
   ingredients: string[];
   steps: string[];
+  notes: string;
   sourceKind: SourceKind;
   sourceTitle: string;
 };
@@ -52,6 +53,7 @@ export function cardFromText(raw: string, fileName?: string): ExtractedCard {
     makes: "",
     ingredients,
     steps,
+    notes: "",
     sourceKind: "original",
     sourceTitle: "",
   };
@@ -121,7 +123,13 @@ function cardFromUnknown(parsed: unknown): ExtractedCard | null {
   const ingredients = asLines(row.ingredients);
   const steps = asLines(row.steps);
   const title = typeof row.title === "string" ? row.title.trim() : "";
-  if (title.length === 0 && ingredients.length === 0 && steps.length === 0) {
+  const notes = typeof row.notes === "string" ? row.notes.trim() : "";
+  if (
+    title.length === 0 &&
+    ingredients.length === 0 &&
+    steps.length === 0 &&
+    notes.length === 0
+  ) {
     return null;
   }
   const sourceKind = isSourceKind(row.sourceKind)
@@ -132,6 +140,7 @@ function cardFromUnknown(parsed: unknown): ExtractedCard | null {
     makes: typeof row.makes === "string" ? row.makes.trim() : "",
     ingredients,
     steps,
+    notes,
     sourceKind,
     sourceTitle:
       typeof row.sourceTitle === "string" ? row.sourceTitle.trim() : "",
