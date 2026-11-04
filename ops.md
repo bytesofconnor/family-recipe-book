@@ -147,6 +147,17 @@ npx convex env set AUTH_GOOGLE_ID ...
 npx convex env set AUTH_GOOGLE_SECRET ...
 ```
 
+The Google account picker says "Choose an account to continue to beloved-lapwing-642.convex.site" because the callback host is `CONVEX_SITE_URL`. `SITE_URL` only sends the person back to the book after Google, so it does not change that sentence. Google prints the callback host there, not the book title.
+
+Showing the family domain on that line needs a custom HTTP domain on the production Convex deployment. Custom domains require Convex Pro. `thefamilyrecipebook.app` already serves the Vercel site, so use a different hostname, such as `auth.thefamilyrecipebook.app`.
+
+1. In the Convex dashboard, open production deployment `beloved-lapwing-642`, then Settings, then Custom domains. Add the hostname. Create the DNS records Convex shows, and wait until the domain has a green check.
+2. On that same settings page, under Environment Variables, set `CUSTOM_AUTH_SITE_URL` to `https://auth.thefamilyrecipebook.app` with no trailing slash.
+3. In Google Cloud, open APIs & Services, then Credentials, then the production web client. Add the authorized redirect URI `https://auth.thefamilyrecipebook.app/api/auth/callback/google`. Add `thefamilyrecipebook.app` under the OAuth consent screen's authorized domains if Google asks for it. Keep the existing `beloved-lapwing-642.convex.site` redirect until a sign-in through the new host works, then remove the old redirect.
+4. Open `https://thefamilyrecipebook.app/join` and choose Continue with Google. The account picker should say "continue to auth.thefamilyrecipebook.app".
+
+Convex Auth documents this under Custom callback and sign-in URLs. There is no in-repo switch that changes the host Google displays.
+
 ## Vercel env
 
 | Name | Required | Notes |
