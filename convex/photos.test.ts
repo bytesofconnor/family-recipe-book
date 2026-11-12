@@ -33,6 +33,16 @@ describe("shouldSetAsCover", () => {
     const bake = { coverStorageId: undefined };
     expect(shouldSetAsCover(bake, false)).toBe(true);
   });
+
+  it("leaves the bake uncovered when the caller opts out", () => {
+    const bake = { coverStorageId: undefined };
+    expect(shouldSetAsCover(bake, false, true)).toBe(false);
+  });
+
+  it("still sets the cover when the caller opts out but asks for this photo", () => {
+    const bake = { coverStorageId: undefined };
+    expect(shouldSetAsCover(bake, true, true)).toBe(true);
+  });
 });
 
 describe("selectNewCover", () => {

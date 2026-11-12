@@ -75,16 +75,62 @@ test.describe("photo intake", () => {
 
     await expect(
       page.getByText(
-        "Uploaded 3 photos. The first one is the cover. Couldn't read words on them. You can still save it.",
+        "Uploaded 3 photos. Tap one if it should be the cover. Couldn't read words on them. You can still save it.",
       ),
     ).toBeVisible();
-    await expect(page.getByRole("img", { name: "counter" })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Use as cover, photo 1" }),
+    ).toHaveAttribute("aria-pressed", "false");
+    await expect(
+      page.getByRole("button", { name: "Use as cover, photo 2" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Use as cover, photo 3" }),
+    ).toBeVisible();
+    const second = page.getByRole("button", { name: "Use as cover, photo 2" });
+    await second.click();
+    await expect(
+      page.getByRole("button", { name: "Cover, photo 2" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("button", { name: "Cover, photo 2" }).click();
+    await expect(
+      page.getByRole("button", { name: "Use as cover, photo 2" }),
+    ).toHaveAttribute("aria-pressed", "false");
+    const choice = page.getByRole("button", { name: "Use as cover, photo 1" });
+    const box = await choice.boundingBox();
+    expect(box).not.toBeNull();
+    expect(Math.min(box!.width, box!.height)).toBeGreaterThanOrEqual(44);
     await expect(
       page.getByRole("button", { name: "Put it in the book" }),
     ).toBeVisible();
     await expect(
       page.getByText("Put it in the book however you already have it"),
     ).toHaveCount(0);
+    await expectNoSeriousAxe(page);
+  });
+
+  test("desktop: several photos start with no cover", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await stubUpload(page, 200);
+    await openDesk(page);
+
+    await page.getByRole("button", { name: "Take or choose photos" }).click();
+    await page.getByLabel("Recipe photos").setInputFiles(PHOTOS.slice(0, 2));
+
+    await expect(
+      page.getByText(
+        "Uploaded 2 photos. Tap one if it should be the cover. Couldn't read words on them. You can still save it.",
+      ),
+    ).toBeVisible();
+    const first = page.getByRole("button", { name: "Use as cover, photo 1" });
+    const second = page.getByRole("button", { name: "Use as cover, photo 2" });
+    await expect(first).toHaveAttribute("aria-pressed", "false");
+    await expect(second).toHaveAttribute("aria-pressed", "false");
+    await second.click();
+    await expect(
+      page.getByRole("button", { name: "Cover, photo 2" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await expect(first).toHaveAttribute("aria-pressed", "false");
     await expectNoSeriousAxe(page);
   });
 
@@ -113,7 +159,7 @@ test.describe("photo intake", () => {
     expect(types).toEqual(["counter.jpg:image/jpeg", "IMG_2044.HEIC:"]);
     await expect(
       page.getByText(
-        "Uploaded 2 photos. The first one is the cover. Couldn't read words on them. You can still save it.",
+        "Uploaded 2 photos. Tap one if it should be the cover. Couldn't read words on them. You can still save it.",
       ),
     ).toBeVisible();
   });

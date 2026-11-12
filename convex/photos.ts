@@ -5,13 +5,21 @@ import { photoValidator } from "./lib/validators";
 import type { Doc, Id } from "./_generated/dataModel";
 
 /**
- * Pure function: Determine if a photo should be set as cover
+ * A caller that omits leaveUncovered still promotes the first photo when the
+ * bake has no cover. Intake passes leaveUncovered so "no cover" stays empty.
  */
 export function shouldSetAsCover(
   bake: { coverStorageId?: Id<"_storage"> },
-  setCoverFlag: boolean
+  setCoverFlag: boolean,
+  leaveUncovered = false,
 ): boolean {
-  return setCoverFlag || !bake.coverStorageId;
+  if (setCoverFlag) {
+    return true;
+  }
+  if (leaveUncovered) {
+    return false;
+  }
+  return !bake.coverStorageId;
 }
 
 /**
@@ -78,6 +86,7 @@ export const attach = mutation({
     storageId: v.id("_storage"),
     alt: v.string(),
     setCover: v.optional(v.boolean()),
+    leaveUncovered: v.optional(v.boolean()),
   },
   returns: v.id("photos"),
   handler: async (ctx, args) => {
@@ -93,8 +102,7 @@ export const attach = mutation({
       alt: args.alt.trim() || bake.title,
     });
 
-    // Use pure function to determine if this should be the cover
-    if (shouldSetAsCover(bake, args.setCover ?? false)) {
+    if (shouldSetAsCover(bake, args.setCover ?? false, args.leaveUncovered ?? false)) {
       await ctx.db.patch("bakes", args.bakeId, { coverStorageId: args.storageId });
     }
 
