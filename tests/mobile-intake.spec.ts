@@ -130,11 +130,12 @@ async function stubUpload(page: Page): Promise<UploadStub> {
       return;
     }
     types.push(route.request().headers()["content-type"] ?? "");
+    const storageId = `jd7a11yfixturestor${String(types.length).padStart(6, "0")}`;
     await route.fulfill({
       status,
       headers,
       contentType: "application/json",
-      body: JSON.stringify({ storageId: "jd7a11yfixture00000storage" }),
+      body: JSON.stringify({ storageId }),
     });
   });
   return {
@@ -220,13 +221,29 @@ test.describe("mobile recipe intake", () => {
     ]);
     await expect(
       page.getByText(
-        "Uploaded 3 photos. The first one is the cover. Check the recipe before saving.",
+        "Uploaded 3 photos. Tap one if it should be the cover. Check the recipe before saving.",
       ),
     ).toBeVisible();
-    await saveFromCard(page, "Sunday loaf", leaked);
-    await expect(page.getByRole("img", { name: "Sunday loaf" })).toBeVisible();
     await expect(
-      page.getByRole("tab", { name: "Photo 3: Sunday loaf - Photo 3" }),
+      page.getByRole("button", { name: "Use as cover, photo 1" }),
+    ).toHaveAttribute("aria-pressed", "false");
+    const coverChoice = await tabToControl(page, "Use as cover, photo 2");
+    await expectFocusRing(page);
+    await expectClearOfDock(page, "Use as cover, photo 2");
+    await coverChoice.click();
+    await expect(
+      page.getByRole("button", { name: "Cover, photo 2" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await expectNoSeriousAxe(page);
+    await saveFromCard(page, "Sunday loaf", leaked);
+    await expect(
+      page.getByRole("tab", { name: "Photo 1: Sunday loaf", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("tab", { name: "Photo 2: Sunday loaf - Photo 1", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("tab", { name: "Photo 3: Sunday loaf - Photo 3", exact: true }),
     ).toBeVisible();
   });
 
@@ -253,10 +270,19 @@ test.describe("mobile recipe intake", () => {
     expect(types).toEqual(["Sunday-loaf-card.jpg:image/jpeg", "IMG_2044.HEIC:"]);
     await expect(
       page.getByText(
-        "Uploaded 2 photos. The first one is the cover. Check the recipe before saving.",
+        "Uploaded 2 photos. Tap one if it should be the cover. Check the recipe before saving.",
       ),
     ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Use as cover, photo 1" }),
+    ).toHaveAttribute("aria-pressed", "false");
     await saveFromCard(page, "Sunday loaf", leaked);
+    await expect(
+      page.getByRole("tab", { name: "Photo 1: Sunday loaf", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("tab", { name: "Photo 1: Sunday loaf - Photo 1", exact: true }),
+    ).toBeVisible();
     await expect(page.getByText("sugar", { exact: true })).toBeVisible();
     await expect(
       page.getByRole("tab", { name: "Photo 2: Sunday loaf - Photo 2" }),
@@ -617,7 +643,7 @@ test.describe("mobile recipe intake", () => {
     ]);
     await expect(
       page.getByText(
-        "Read across the photos. The first one is the cover. Change anything that's wrong.",
+        "Read across the photos. Tap one if it should be the cover. Change anything that's wrong.",
       ),
     ).toBeVisible();
     await expect(page.getByLabel("What do you call it?")).toHaveValue(

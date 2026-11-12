@@ -72,6 +72,10 @@ function rememberSave(args: unknown) {
     ingredientSearch: ingredients.join(" "),
     changes: [],
     coverUrl: "",
+    coverStorageId:
+      typeof fields.coverStorageId === "string" && fields.coverStorageId.length > 0
+        ? (fields.coverStorageId as PublishedBake["coverStorageId"])
+        : undefined,
   } as PublishedBake;
   savedBySlug.set(slug, bake);
   return { bakeId: id, slug };

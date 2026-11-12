@@ -85,12 +85,12 @@ function scanSummary(input: {
   }
   if (input.photoCount > 1) {
     if (input.usedAi && (input.hasWords || input.titleOnly)) {
-      return "Read across the photos. The first one is the cover. Change anything that's wrong.";
+      return "Read across the photos. Tap one if it should be the cover. Change anything that's wrong.";
     }
     if (input.hasWords) {
-      return `Uploaded ${input.photoCount} photos. The first one is the cover. Check the recipe before saving.`;
+      return `Uploaded ${input.photoCount} photos. Tap one if it should be the cover. Check the recipe before saving.`;
     }
-    return `Uploaded ${input.photoCount} photos. The first one is the cover. Couldn't read words on them. You can still save it.`;
+    return `Uploaded ${input.photoCount} photos. Tap one if it should be the cover. Couldn't read words on them. You can still save it.`;
   }
   if (input.usedAi && input.hasWords && !input.partial && !input.titleOnly) {
     const where =
@@ -141,6 +141,59 @@ type DraftCard = {
   notes: string;
   keep: boolean;
 };
+
+type IntakeShot = {
+  storageId: Id<"_storage">;
+  previewUrl: string;
+};
+
+function CoverChoices({
+  shots,
+  coverPick,
+  onPick,
+}: {
+  shots: IntakeShot[];
+  coverPick: number | null;
+  onPick: (index: number) => void;
+}) {
+  const hintId = useId();
+  return (
+    <fieldset className="write-desk-cover-pick">
+      <legend className="text-[17px] leading-7 text-ink">Cover photo</legend>
+      <p id={hintId} className="mt-1 text-[17px] leading-7 text-ink-soft">
+        Tap a photo to use it as the cover. Leave them all as pages if none is
+        the dish.
+      </p>
+      <ul className="write-desk-cover-grid" aria-describedby={hintId}>
+        {shots.map((shot, index) => {
+          const selected = coverPick === index;
+          const photoNumber = index + 1;
+          return (
+            <li key={`${shot.storageId}-${index}`}>
+              <button
+                type="button"
+                className={
+                  selected
+                    ? "write-desk-cover-choice is-cover"
+                    : "write-desk-cover-choice"
+                }
+                aria-pressed={selected}
+                onClick={() => onPick(index)}
+              >
+                <img src={shot.previewUrl} alt="" />
+                <span className="write-desk-cover-choice-label">
+                  {selected
+                    ? `Cover, photo ${photoNumber}`
+                    : `Use as cover, photo ${photoNumber}`}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </fieldset>
+  );
+}
 
 export function WriteDesk({
   token,
@@ -207,7 +260,8 @@ export function WriteDesk({
   const [extractNote, setExtractNote] = useState<string | null>(null);
   const [readFrom, setReadFrom] = useState<ScanKind | null>(null);
   const [readFields, setReadFields] = useState<ReadFields>(EMPTY_READ);
-  const [intakePhotoStorageIds, setIntakePhotoStorageIds] = useState<Id<"_storage">[]>([]);
+  const [intakeShots, setIntakeShots] = useState<IntakeShot[]>([]);
+  const [coverPick, setCoverPick] = useState<number | null>(null);
   const [story, setStory] = useState("");
   const [bakedOn, setBakedOn] = useState(() =>
     new Date().toISOString().slice(0, 10),
@@ -352,7 +406,8 @@ export function WriteDesk({
     setOriginIsImage(Boolean(editBake.photoUrl));
     setOriginPreview(editBake.photoUrl);
     setPhotoFile(null);
-    setIntakePhotoStorageIds([]);
+    setIntakeShots([]);
+    setCoverPick(null);
     setCoverCleared(false);
     setPile([]);
     setEditingIndex(null);
@@ -662,6 +717,7 @@ export function WriteDesk({
     setSourceKind("original");
 
     const uploadedIds: Id<"_storage">[] = [];
+    let shots: IntakeShot[] = [];
 
     try {
       const prepared: File[] = [];
@@ -688,16 +744,31 @@ export function WriteDesk({
         uploadedIds.push(storageId);
       }
 
-      setIntakePhotoStorageIds(uploadedIds);
+      shots = prepared.map((file, index) => ({
+        storageId: uploadedIds[index]!,
+        previewUrl: URL.createObjectURL(file),
+      }));
+      setIntakeShots((current) => {
+        for (const shot of current) {
+          if (shot.previewUrl.startsWith("blob:")) {
+            URL.revokeObjectURL(shot.previewUrl);
+          }
+        }
+        return shots;
+      });
+      setCoverPick(null);
 
       setOriginIsImage(true);
       setOriginPreview((current) => {
-        if (current) {
+        if (
+          current?.startsWith("blob:") &&
+          !shots.some((shot) => shot.previewUrl === current)
+        ) {
           URL.revokeObjectURL(current);
         }
-        return URL.createObjectURL(prepared[0]!);
+        return shots[0]!.previewUrl;
       });
-      setOriginStorageId(uploadedIds[0]!);
+      setOriginStorageId(shots[0]!.storageId);
 
       setExtractNote(
         prepared.length > 1 ? "Reading the photos…" : "Reading the photo…",
@@ -730,7 +801,16 @@ export function WriteDesk({
       });
     } catch (caught) {
       setError(messageFrom(caught, "Couldn't upload the photos."));
-      setIntakePhotoStorageIds([]);
+      for (const shot of shots) {
+        if (shot.previewUrl.startsWith("blob:")) {
+          URL.revokeObjectURL(shot.previewUrl);
+        }
+      }
+      setIntakeShots([]);
+      setCoverPick(null);
+      setOriginPreview(null);
+      setOriginIsImage(false);
+      setOriginStorageId(null);
     } finally {
       setExtracting(false);
     }
@@ -832,7 +912,14 @@ export function WriteDesk({
   }
 
   function clearDesk() {
-    if (originPreview && originPreview.startsWith("blob:")) {
+    const seen = new Set<string>();
+    for (const shot of intakeShots) {
+      if (shot.previewUrl.startsWith("blob:") && !seen.has(shot.previewUrl)) {
+        URL.revokeObjectURL(shot.previewUrl);
+        seen.add(shot.previewUrl);
+      }
+    }
+    if (originPreview?.startsWith("blob:") && !seen.has(originPreview)) {
       URL.revokeObjectURL(originPreview);
     }
     setScreen("choose");
@@ -857,7 +944,8 @@ export function WriteDesk({
     setOriginIsImage(false);
     setOriginPreview(null);
     setPhotoFile(null);
-    setIntakePhotoStorageIds([]);
+    setIntakeShots([]);
+    setCoverPick(null);
     setPile([]);
     setEditingIndex(null);
     setEditingBakeId(null);
@@ -1020,13 +1108,19 @@ export function WriteDesk({
     setPending(true);
     try {
       const tray = photoFile;
+      const multi = intakeShots.length > 1;
+      const chosen =
+        multi && coverPick !== null ? intakeShots[coverPick] : undefined;
       const coverFromCard =
-        originIsImage && originStorageId && !coverCleared
+        !multi && originIsImage && originStorageId && !coverCleared
           ? originStorageId
           : null;
-      const coverStorageId = tray
-        ? await uploadFile(tray)
-        : coverFromCard ?? undefined;
+      const coverStorageId =
+        !multi && tray
+          ? await uploadFile(tray)
+          : chosen
+            ? chosen.storageId
+            : (coverFromCard ?? undefined);
 
       if (editingBakeId) {
         const result = await updateBake({
@@ -1092,19 +1186,28 @@ export function WriteDesk({
         changes: readyChanges(changes),
         status,
       });      
-      // Attach photos: if we have multiple intake photos, attach them all in order
-      if (intakePhotoStorageIds.length > 0) {
+      if (intakeShots.length > 0) {
         try {
-          for (const [index, storageId] of intakePhotoStorageIds.entries()) {
+          for (const [index, shot] of intakeShots.entries()) {
+            const isCover = multi && coverPick === index;
             await attachPhoto({
               ...writeAccess,
               bakeId: result.bakeId,
-              storageId,
-              alt: index === 0 ? title : `${title} - Photo ${index + 1}`,
-              setCover: index === 0, // First photo is the cover
+              storageId: shot.storageId,
+              alt: isCover ? title : `${title} - Photo ${index + 1}`,
+              setCover: isCover,
+              leaveUncovered: multi,
             });
           }
-          setIntakePhotoStorageIds([]); // Clear after attaching
+          for (const shot of intakeShots) {
+            if (shot.previewUrl.startsWith("blob:")) {
+              URL.revokeObjectURL(shot.previewUrl);
+            }
+          }
+          setIntakeShots([]);
+          setCoverPick(null);
+          setOriginPreview(null);
+          setOriginIsImage(false);
         } catch {
           toast.error("Saved, but some photos didn't attach. You can add them when you edit.");
         }
@@ -1409,7 +1512,15 @@ export function WriteDesk({
           {/* Same rhythm as the bake page: photo + title/story, then the recipe card. */}
           <header className="bake-leaf-hero write-desk-hero">
             <div className="bake-leaf-hero-photo write-desk-hero-photo">
-              {originPreview || photoPreview ? (
+              {intakeShots.length > 1 ? (
+                <CoverChoices
+                  shots={intakeShots}
+                  coverPick={coverPick}
+                  onPick={(index) =>
+                    setCoverPick((current) => (current === index ? null : index))
+                  }
+                />
+              ) : originPreview || photoPreview ? (
                 <div className="write-desk-photo">
                   <img
                     src={photoPreview ?? originPreview ?? ""}

@@ -4689,6 +4689,66 @@ summary::-webkit-details-marker {
   border-color: var(--color-cinnamon-deep);
 }
 
+.write-desk-cover-pick {
+  margin: 0;
+  border: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.write-desk-cover-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.write-desk-cover-choice {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1.5px solid var(--color-rule);
+  border-radius: 0.5rem;
+  background: var(--color-paper-raised);
+  color: var(--color-ink);
+  cursor: pointer;
+  text-align: center;
+}
+
+.write-desk-cover-choice img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: var(--color-paper);
+}
+
+.write-desk-cover-choice-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0.25rem 0.5rem;
+  font-size: 17px;
+  line-height: 1.3;
+}
+
+.write-desk-cover-choice.is-cover {
+  border-color: var(--color-cinnamon-deep);
+  border-width: 2px;
+}
+
+.write-desk-cover-choice:focus-visible {
+  outline: 3px solid var(--color-cinnamon-deep);
+  outline-offset: 3px;
+}
+
 .write-desk-title {
   box-sizing: border-box;
   width: 100%;

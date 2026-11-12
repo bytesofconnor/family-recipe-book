@@ -124,8 +124,9 @@ await ctx.db.insert("photos", {
 });
 
 // Sync cover:
-if (args.setCover || !bake.coverStorageId) {
-  // Set as cover if explicitly requested OR if this is the first photo
+if (args.setCover || (!args.leaveUncovered && !bake.coverStorageId)) {
+  // Set as cover when asked, or when this is the first photo and the caller
+  // did not opt out. Multi-photo intake opts out so an empty cover stays empty.
   await ctx.db.patch("bakes", args.bakeId, { 
     coverStorageId: args.storageId 
   });
@@ -133,7 +134,8 @@ if (args.setCover || !bake.coverStorageId) {
 ```
 
 **Safety guarantees:**
-- ✅ First photo automatically becomes cover
+- ✅ Callers that omit `leaveUncovered` still make the first photo the cover
+- ✅ Multi-photo intake passes `leaveUncovered` so "no cover" stays empty
 - ✅ Subsequent photos don't override cover unless requested
 - ✅ `setCover` flag gives explicit control
 - ✅ No race conditions (mutations are serialized by Convex)
