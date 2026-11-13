@@ -455,3 +455,69 @@ test.describe("admin editor accessibility", () => {
     await expectTapTargets(page, ADMIN_PAGES, () => [], preparePage);
   });
 });
+
+test.describe("public join and FAQ phone polish", () => {
+  const creditPages = ["/join", "/join?invite=family-link", "/faq"] as const;
+
+  for (const viewport of VIEWPORTS) {
+    test(`footer credit has no Home link @ ${viewport.name}`, async ({ page }) => {
+      await page.setViewportSize({
+        width: viewport.width,
+        height: viewport.height,
+      });
+      await page.emulateMedia({ reducedMotion: "reduce" });
+
+      for (const path of creditPages) {
+        await page.goto(path);
+        await expect(
+          page.getByRole("link", { name: "Home" }),
+          `Home link still in the credit on ${path}`,
+        ).toHaveCount(0);
+        const nav =
+          viewport.name === "mobile"
+            ? page.locator(".book-dock")
+            : page.locator(".book-bookmarks");
+        await expect(nav).toBeVisible();
+      }
+    });
+  }
+
+  test("mobile FAQ page scroll clears the last open answer from the dock", async ({
+    page,
+  }) => {
+    const viewport = VIEWPORTS.find((item) => item.name === "mobile")!;
+    await page.setViewportSize({
+      width: viewport.width,
+      height: viewport.height,
+    });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/faq");
+    await expect(
+      page.getByRole("heading", { name: "Before you open the book." }),
+    ).toBeVisible();
+
+    await page.evaluate(() => {
+      for (const node of document.querySelectorAll("details.book-back-item")) {
+        if (node instanceof HTMLDetailsElement) {
+          node.open = true;
+        }
+      }
+    });
+
+    await page.evaluate(() => {
+      const root = document.scrollingElement;
+      root?.scrollTo(0, root.scrollHeight);
+    });
+
+    const answer = page.getByText("fill in the recipe whenever.");
+    await expect(answer).toBeVisible();
+    const answerBox = await answer.boundingBox();
+    const dockBox = await page.locator(".book-dock").boundingBox();
+    expect(answerBox, "Last FAQ answer has no box").toBeTruthy();
+    expect(dockBox, "Dock has no box").toBeTruthy();
+    expect(
+      answerBox!.y + answerBox!.height,
+      "Last FAQ answer still sits under the dock after scrolling the page",
+    ).toBeLessThanOrEqual(dockBox!.y - 8);
+  });
+});
