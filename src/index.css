@@ -2800,8 +2800,6 @@ html[data-arrive="arrive"] .book[data-book-flip="back"] {
     margin-top: 1rem;
   }
 
-  /* The phone page itself scrolls. An inner scroller on the back cover
-     hides the last answer behind the dock, and iOS does not show that bar. */
   .room-shell:has(.book[data-face="back"]) {
     height: auto;
     min-height: 100dvh;

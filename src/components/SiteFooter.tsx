@@ -8,7 +8,6 @@ export function SiteFooter({
   homeLink = true,
 }: {
   tone?: "paper" | "dark";
-  /** Public covers use the dock and bookmarks. The credit block stays a credit. */
   homeLink?: boolean;
 }) {
   const year = new Date().getFullYear();
