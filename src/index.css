@@ -2800,6 +2800,36 @@ html[data-arrive="arrive"] .book[data-book-flip="back"] {
     margin-top: 1rem;
   }
 
+  .room-shell:has(.book[data-face="back"]) {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+
+  .room-shell:has(.book[data-face="back"]) .book,
+  .room-shell:has(.book[data-face="back"]) .book-pages,
+  .room-shell:has(.book[data-face="back"]) .book-face,
+  .room-shell:has(.book[data-face="back"]) .book-leaf,
+  .room-shell:has(.book[data-face="back"]) .book-leaf-under,
+  .room-shell:has(.book[data-face="back"]) .book-sheet-inner,
+  .room-shell:has(.book[data-face="back"]) .book-page-body,
+  .room-shell:has(.book[data-face="back"]) .book-back-cover,
+  .room-shell:has(.book[data-face="back"]) .book-back-body {
+    overflow: visible;
+    height: auto;
+    max-height: none;
+  }
+
+  .room-shell:has(.book[data-face="back"]) .book {
+    min-height: calc(100dvh - var(--room-pad-top) - var(--room-pad-bottom));
+  }
+
+  .room-shell:has(.book[data-face="back"]) .book-back-body {
+    padding-bottom: calc(
+      var(--dock-clearance, 4.5rem) + env(safe-area-inset-bottom, 0px)
+    );
+  }
+
   .book-back-footer .book-back-cta {
     display: none;
   }

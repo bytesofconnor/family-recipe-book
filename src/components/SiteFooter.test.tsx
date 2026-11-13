@@ -81,6 +81,18 @@ describe("SiteFooter", () => {
     expect(footer).not.toHaveClass("site-footer-dark");
   });
 
+  it("can stand as credit without a Home link", () => {
+    render(
+      <MemoryRouter>
+        <SiteFooter homeLink={false} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByRole("link", { name: "Home" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Footer" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /sally/i })).toBeInTheDocument();
+  });
+
   it("does not name any person", () => {
     const { container } = render(
       <MemoryRouter>

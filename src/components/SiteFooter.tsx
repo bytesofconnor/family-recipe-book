@@ -5,8 +5,10 @@ export const SALLY_HOME = "https://sallysbakingaddiction.com";
 
 export function SiteFooter({
   tone = "paper",
+  homeLink = true,
 }: {
   tone?: "paper" | "dark";
+  homeLink?: boolean;
 }) {
   const year = new Date().getFullYear();
 
@@ -26,9 +28,11 @@ export function SiteFooter({
         </a>
         .
       </p>
-      <nav className="site-footer-nav" aria-label="Footer">
-        <Link to="/">Home</Link>
-      </nav>
+      {homeLink ? (
+        <nav className="site-footer-nav" aria-label="Footer">
+          <Link to="/">Home</Link>
+        </nav>
+      ) : null}
     </footer>
   );
 }
