@@ -80,7 +80,7 @@ export function JoinCoverLanding({ invited = false }: { invited?: boolean }) {
         Keep the recipes. Pass them on.
       </p>
       <GoogleComeIn cover />
-      <SiteFooter tone="dark" />
+      <SiteFooter tone="dark" homeLink={false} />
     </div>
   );
 }
@@ -111,7 +111,7 @@ export function FamilyDoor({
         {blurb}
       </p>
       <GoogleComeIn inviteToken={inviteToken} />
-      <SiteFooter />
+      <SiteFooter homeLink={false} />
     </div>
   );
 }

@@ -86,7 +86,7 @@ export function FaqPage() {
             </p>
           ) : null}
         </footer>
-        <SiteFooter tone="dark" />
+        <SiteFooter tone="dark" homeLink={false} />
       </div>
     </div>
   );
