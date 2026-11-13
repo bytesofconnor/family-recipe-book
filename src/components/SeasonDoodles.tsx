@@ -432,22 +432,10 @@ export function SeasonDoodles({
   const theme = useSeason();
   const visibilityClass = forceVisible ? " season-doodles-visible" : "";
 
+  // Artwork paints on the body so it repeats for the whole page.
+  // A fixed viewport image stops and leaves a flat band on tall leaves.
   if (theme.artwork) {
-    return (
-      <div
-        aria-hidden="true"
-        className={`season-doodles season-artwork-layer pointer-events-none z-0 overflow-hidden${visibilityClass}`}
-      >
-        <picture className="season-artwork-picture">
-          <source media="(max-width: 639px)" srcSet={theme.artwork.mobile} />
-          <img
-            className="season-artwork"
-            src={theme.artwork.desktop}
-            alt=""
-          />
-        </picture>
-      </div>
-    );
+    return null;
   }
 
   return (

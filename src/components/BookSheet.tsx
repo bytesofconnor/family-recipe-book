@@ -4,7 +4,7 @@ import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
 import { WarmPages } from "@/components/WarmPages";
 import { BookHeadingProvider } from "@/lib/bookHeading";
-import { pageForPath, sectionOf } from "@/lib/bookPages";
+import { sectionOf } from "@/lib/bookPages";
 import { SITE_LINE, SITE_SHORT } from "@/lib/site";
 
 export function BookChrome({ pathname }: { pathname?: string }) {
@@ -59,11 +59,7 @@ function colophonAside(pathname: string): string | null {
 }
 
 export function BookColophon({ pathname }: { pathname: string }) {
-  const page = pageForPath(pathname);
   const aside = colophonAside(pathname);
-  // Always reserve the page-number slot so tab flips don't nudge chrome height.
-  const showPageNumber =
-    pathname !== "/join" && pathname !== "/faq";
 
   return (
     <footer className="book-colophon">
@@ -81,19 +77,13 @@ export function BookColophon({ pathname }: { pathname: string }) {
           {aside ? <p className="book-colophon-aside">{aside}</p> : null}
         </div>
       </div>
-      {showPageNumber ? (
-        <p className="book-colophon-page" aria-hidden="true">
-          <span className="book-colophon-page-rule" />
-          <span className="book-colophon-page-num">{page}</span>
-          <span className="book-colophon-page-rule" />
-        </p>
-      ) : (
-        <p className="book-colophon-page book-colophon-page-quiet" aria-hidden="true">
-          <span className="book-colophon-page-rule" />
-          <span className="book-colophon-page-dot" />
-          <span className="book-colophon-page-rule" />
-        </p>
-      )}
+      {/* Keep the footer's right slot so the brand line does not jump.
+          The old digits were a hash of the route, not a page you can turn to. */}
+      <p className="book-colophon-page" aria-hidden="true">
+        <span className="book-colophon-page-rule" />
+        <span className="book-colophon-page-dot" />
+        <span className="book-colophon-page-rule" />
+      </p>
     </footer>
   );
 }

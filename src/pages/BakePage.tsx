@@ -24,6 +24,13 @@ import { useRecipeTitle } from "@/lib/bookHeading";
 import { RedirectToJoin } from "@/components/RedirectToJoin";
 import { useCookbookView } from "@/lib/preview";
 
+/** A drop cap needs a paragraph beside it. A short note splits into a stray initial. */
+const DROP_CAP_MIN = 90;
+
+function leadClass(text: string): string | undefined {
+  return text.trim().length >= DROP_CAP_MIN ? "drop-cap" : undefined;
+}
+
 export function BakePage() {
   const { slug } = useParams();
   const [params] = useSearchParams();
@@ -172,7 +179,7 @@ export function BakePage() {
       {hasIntro ? (
         <div className="bake-leaf-intro">
           {firstParagraph ? (
-            <p className="drop-cap">{firstParagraph}</p>
+            <p className={leadClass(firstParagraph)}>{firstParagraph}</p>
           ) : null}
           {restParagraphs.map((paragraph) => (
             <p key={paragraph}>{paragraph}</p>

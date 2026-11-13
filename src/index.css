@@ -23,6 +23,7 @@ html {
   text-size-adjust: 100%;
   /* Both edges so a scrollbar doesn’t shove the book off-center. */
   scrollbar-gutter: stable both-edges;
+  --season-art: var(--season-art-desktop);
 }
 
 body {
@@ -295,11 +296,6 @@ a.book-sign:focus-visible {
   font-size: 1.05rem;
   font-variant-numeric: tabular-nums;
   line-height: 1;
-}
-
-.book-colophon-page-num {
-  min-width: 1.5rem;
-  text-align: center;
 }
 
 .book-colophon-page-rule {
@@ -1446,22 +1442,6 @@ html[data-arrive="opening"] .book-colophon {
   transition: opacity 700ms ease;
 }
 
-.season-artwork-picture,
-.season-artwork {
-  position: absolute;
-  inset: 0;
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-.season-artwork {
-  object-fit: cover;
-  object-position: center;
-  opacity: 0.94;
-  filter: saturate(0.9) contrast(0.98);
-}
-
 html[data-arrive="opening"] .season-doodles,
 html[data-arrive="in"] .season-doodles {
   opacity: 1;
@@ -1504,6 +1484,7 @@ body {
   overflow-x: hidden;
   background-color: var(--color-room);
   background-image:
+    var(--season-art, none),
     radial-gradient(
       circle at 18% 12%,
       color-mix(in srgb, var(--color-room) 62%, var(--color-wash-cool)),
@@ -1514,9 +1495,12 @@ body {
       color-mix(in srgb, var(--color-room) 88%, var(--color-wash-cool)),
       color-mix(in srgb, var(--color-room) 76%, var(--color-wash-warm))
     );
-  background-size: cover;
-  background-position: center;
-  background-attachment: fixed;
+  /* Repeat the seasonal art down the canvas. A fixed 100dvh image
+     stopped partway down a tall recipe and left a flat brown block. */
+  background-repeat: repeat-y, no-repeat, no-repeat;
+  background-size: 100% auto, cover, cover;
+  background-position: top center, center, center;
+  background-attachment: scroll, fixed, fixed;
   color: var(--color-ink);
   font-family: var(--font-sans);
   font-size: 20px;
@@ -1555,6 +1539,9 @@ body {
 @media (max-width: 639px) {
   html {
     font-size: 17px;
+    /* A stable gutter on both edges leaves a brown strip beside the paper. */
+    scrollbar-gutter: auto;
+    --season-art: var(--season-art-mobile);
   }
 
   .room-shell {
@@ -2276,10 +2263,9 @@ html[data-arrive="arrive"] .book[data-book-flip="back"] {
     bottom: var(--dock-clearance);
   }
 
-  /* All page content needs bottom padding to clear the fixed dock. 
-     This ensures the last content element (like "Already in the book" on 
-     the Add page) isn't covered by the dock. */
-  .room-shell[data-dock="true"] .book-page-body {
+  /* The colophon and site footer sit outside the page body, so padding
+     there never lifts the last line. Clear the bar on signed-in pages only. */
+  .room-shell[data-dock="true"][data-book-grow="true"] .book-face {
     padding-bottom: var(--dock-clearance);
   }
 }
@@ -4063,7 +4049,7 @@ a.book-tab {
 }
 
 .drop-cap {
-  text-wrap: pretty;
+  text-wrap: wrap;
 }
 
 .drop-cap::first-letter {
@@ -4873,7 +4859,7 @@ summary::-webkit-details-marker {
 @media (min-width: 720px) {
   .bake-leaf-hero {
     display: grid;
-    grid-template-columns: minmax(15rem, 42%) minmax(0, 1fr);
+    grid-template-columns: minmax(18rem, min(46%, 40rem)) minmax(0, 1fr);
     align-items: start;
     gap: 1.5rem;
   }
@@ -4891,10 +4877,6 @@ summary::-webkit-details-marker {
 }
 
 @media (min-width: 960px) {
-  .bake-leaf-hero-photo {
-    max-width: 24rem;
-  }
-
   .bake-leaf-title {
     font-size: clamp(2.2rem, 3.2vw, 3.15rem);
   }

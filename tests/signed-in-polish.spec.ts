@@ -77,20 +77,28 @@ test("phone paper is flush left and the last line clears the tab bar", async ({
 
   for (const path of ["/add", "/bakes/sunday-muffins"]) {
     await page.goto(path);
+    await expect(page.locator(".book-colophon")).toBeVisible();
+    if (path.startsWith("/bakes/")) {
+      await expect(page.getByRole("heading", { name: "Sunday muffins" })).toBeVisible();
+    }
     await page.evaluate(() => {
       document.scrollingElement?.scrollTo(0, document.scrollingElement.scrollHeight);
     });
 
     const box = await page.evaluate(() => {
       const dock = document.querySelector(".book-dock")?.getBoundingClientRect();
-      const line = document
-        .querySelector(".book-colophon, .site-footer")
-        ?.getBoundingClientRect();
+      const bottoms = [...document.querySelectorAll(".book-colophon, .site-footer")]
+        .filter((node) => {
+          const styles = getComputedStyle(node);
+          return styles.display !== "none" && styles.visibility !== "hidden";
+        })
+        .map((node) => node.getBoundingClientRect().bottom);
+      const lineBottom = bottoms.length > 0 ? Math.max(...bottoms) : 0;
       const book = document.querySelector(".book")?.getBoundingClientRect();
       const photo = document.querySelector(".bake-leaf-hero-photo")?.getBoundingClientRect();
       return {
         dockTop: dock?.top ?? 0,
-        lineBottom: line?.bottom ?? 0,
+        lineBottom,
         bookLeft: book?.left ?? 99,
         photoWidth: photo?.width ?? 0,
         bookWidth: book?.width ?? 1,

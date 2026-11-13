@@ -504,5 +504,12 @@ export function applySeasonTheme(month: MonthNumber = minnesotaMonth()): MonthTh
   root.style.setProperty("--color-leaf", theme.leaf);
   root.style.setProperty("--color-wash-warm", theme.washWarm);
   root.style.setProperty("--color-wash-cool", theme.washCool);
+  if (theme.artwork) {
+    root.style.setProperty("--season-art-desktop", `url("${theme.artwork.desktop}")`);
+    root.style.setProperty("--season-art-mobile", `url("${theme.artwork.mobile}")`);
+  } else {
+    root.style.removeProperty("--season-art-desktop");
+    root.style.removeProperty("--season-art-mobile");
+  }
   return theme;
 }
