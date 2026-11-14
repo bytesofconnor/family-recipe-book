@@ -1,4 +1,11 @@
+import { useId, useState } from "react";
 import { Kicker } from "@/components/Kicker";
+import {
+  SCALE_CHOICES,
+  type ScaleFactor,
+  batchNote,
+  scaleAmountText,
+} from "@/lib/scaleAmount";
 
 export function KitchenMethod({
   makes,
@@ -17,6 +24,8 @@ export function KitchenMethod({
   sourceUrl: string;
   shared?: boolean;
 }) {
+  const [scale, setScale] = useState<ScaleFactor>(1);
+  const scaleLabelId = useId();
   const whatWentIn = (ingredients ?? []).map((line) => line.trim()).filter(Boolean);
   const how = (steps ?? []).map((line) => line.trim()).filter(Boolean);
   const prose = method?.trim() ?? "";
@@ -27,6 +36,10 @@ export function KitchenMethod({
   }
 
   const blocks = prose.split("\n\n").filter((block) => block.length > 0);
+  const canScale = whatWentIn.length > 0;
+  const shownScale: ScaleFactor = canScale ? scale : 1;
+  const note = canScale ? batchNote(shownScale, makes) : null;
+  const shownMakes = makes ? scaleAmountText(makes, shownScale) : "";
 
   return (
     <section
@@ -40,9 +53,50 @@ export function KitchenMethod({
       >
         {shared ? "How to make it" : "How we made it"}
       </h2>
-      {makes ? (
+      {canScale ? (
+        <div className="mt-4">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <span
+              id={scaleLabelId}
+              className="text-[16px] leading-6 text-ink-soft"
+            >
+              Batch size
+            </span>
+            <div
+              role="group"
+              aria-labelledby={scaleLabelId}
+              className="flex flex-wrap gap-1.5"
+            >
+              {SCALE_CHOICES.map((choice) => {
+                const pressed = scale === choice.factor;
+                return (
+                  <button
+                    key={choice.factor}
+                    type="button"
+                    aria-pressed={pressed}
+                    onClick={() => setScale(choice.factor)}
+                    className={`recipe-scale-choice inline-flex min-h-11 min-w-11 touch-manipulation items-center justify-center rounded-full border-cocoa px-3 text-[17px] leading-none focus-visible:outline-3 focus-visible:outline-offset-3 focus-visible:outline-cinnamon-deep ${
+                      pressed
+                        ? "border-[3px] bg-cocoa font-medium text-paper-raised"
+                        : "border-[1.5px] bg-transparent font-medium text-ink hover:bg-paper-press"
+                    }`}
+                  >
+                    {choice.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          {note ? (
+            <p className="mt-2 text-[16px] leading-6 text-cocoa" aria-live="polite">
+              {note}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      {shownMakes ? (
         <p className="mt-3 font-display text-[1.35rem] leading-8 text-cocoa">
-          {makes}
+          {shownMakes}
         </p>
       ) : null}
 
@@ -54,12 +108,12 @@ export function KitchenMethod({
                 What went in
               </h3>
               <ul className="mt-3 flex flex-col">
-                {whatWentIn.map((line) => (
+                {whatWentIn.map((line, index) => (
                   <li
-                    key={line}
+                    key={`${index}-${line}`}
                     className="border-t border-rule/80 py-2.5 text-[18px] leading-7 first:border-t-0 first:pt-0 last:pb-0"
                   >
-                    {line}
+                    {scaleAmountText(line, shownScale)}
                   </li>
                 ))}
               </ul>

@@ -27,6 +27,11 @@ export default defineConfig({
       testIgnore: "**/mobile-intake.spec.ts",
     },
     {
+      name: "webkit",
+      use: { ...devices["Desktop Safari"] },
+      testMatch: "**/scale-recipe.spec.ts",
+    },
+    {
       name: "iphone",
       use: { ...devices["iPhone 13"] },
       testMatch: "**/mobile-intake.spec.ts",

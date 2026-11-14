@@ -71,6 +71,13 @@ const PUBLIC_PAGES: ScanPage[] = [
 
 const SIGNED_IN_PAGES: ScanPage[] = [
   {
+    name: "recipe page",
+    path: "/bakes/sunday-muffins",
+    ready: "Batch size",
+    controls: ["½×", "1×", "2×", "Recipes"],
+    docked: true,
+  },
+  {
     name: "write desk",
     path: "/add",
     ready: "Put it in the book however you already have it",

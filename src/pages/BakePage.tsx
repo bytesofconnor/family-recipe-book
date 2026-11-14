@@ -192,6 +192,7 @@ export function BakePage() {
 
       <div className="bake-leaf-method">
         <KitchenMethod
+          key={bake._id}
           makes={bake.makes}
           ingredients={bake.ingredients}
           steps={bake.steps}

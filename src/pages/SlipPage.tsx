@@ -88,6 +88,7 @@ export function SlipPage() {
         <div className="mt-8">
           <KitchenMethod
             shared
+            key={token}
             makes={recipe.makes}
             ingredients={recipe.ingredients}
             steps={recipe.steps}
