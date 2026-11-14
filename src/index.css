@@ -5472,7 +5472,8 @@ summary::-webkit-details-marker {
   .book-tab[aria-current="page"],
   .book-sort[aria-checked="true"],
   .book-mark[aria-checked="true"],
-  .book-bookmark-active {
+  .book-bookmark-active,
+  .recipe-scale-choice[aria-pressed="true"] {
     outline: 2px solid Highlight;
     outline-offset: 2px;
   }
