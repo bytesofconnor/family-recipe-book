@@ -863,6 +863,23 @@ test.describe("add paths at 390", () => {
     await expectLines(page, "What went in", "butter\nbread");
   });
 
+  test("typing shows where it came from above the save bar", async ({ page }) => {
+    await start(page);
+    await page.getByRole("button", { name: "Type it myself", exact: true }).click();
+    const mine = page.getByRole("button", { name: "Mine", pressed: true });
+    const last = page.getByRole("button", { name: "Pinterest" });
+    const mineBox = await mine.boundingBox();
+    const lastBox = await last.boundingBox();
+    const save = await page
+      .getByRole("button", { name: "Put it in the book" })
+      .boundingBox();
+    expect(mineBox).not.toBeNull();
+    expect(lastBox).not.toBeNull();
+    expect(save).not.toBeNull();
+    expect(mineBox!.y).toBeGreaterThanOrEqual(0);
+    expect(lastBox!.y + lastBox!.height).toBeLessThanOrEqual(save!.y + 1);
+  });
+
   test("a pasted link keeps the address field and save above the tab bar", async ({
     page,
   }) => {
