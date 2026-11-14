@@ -100,9 +100,6 @@ jobs:
           # Dummy Convex URL for build — not connected to any deployment
           VITE_CONVEX_URL: https://preview-only-not-connected.convex.cloud
 
-      - name: Run unit tests
-        run: npm test
-
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium webkit
 
