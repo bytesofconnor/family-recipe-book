@@ -6,9 +6,17 @@ import type { Id } from "../../convex/_generated/dataModel";
 import { Link } from "react-router";
 import { BookConfirm } from "@/components/BookConfirm";
 import { PhotoManager } from "@/components/PhotoManager";
+import { RecipeLines } from "@/components/RecipeLines";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  clearDeskDraft,
+  readDeskDraft,
+  writeDeskDraft,
+  type DeskDraft,
+} from "@/lib/deskDraft";
+import { watchWriteDeskFields } from "@/lib/keepFieldInView";
 import { Kicker } from "@/components/Kicker";
 import { formatBakeDate } from "@/lib/dates";
 import { PageTitle } from "@/lib/pageTitle";
@@ -147,6 +155,23 @@ type IntakeShot = {
   previewUrl: string;
 };
 
+function pickupNote(seed: DeskDraft | null): string | null {
+  if (!seed) {
+    return null;
+  }
+  return seed.hadPhoto
+    ? "Picked up the words. Add the photo again."
+    : "Picked up where you left off.";
+}
+
+function changeSerialFrom(changes: ChangeDraft[]): number {
+  return changes.reduce((max, row) => {
+    const match = /^change-(\d+)$/.exec(row.id);
+    const value = match ? Number(match[1]) : 0;
+    return Math.max(max, value);
+  }, 0);
+}
+
 function CoverChoices({
   shots,
   coverPick,
@@ -245,33 +270,40 @@ export function WriteDesk({
   const fileId = useId();
   const fileInput = useRef<HTMLInputElement>(null);
   const hydratedEdit = useRef<Id<"bakes"> | null>(null);
+  const [seed] = useState<DeskDraft | null>(() =>
+    editBakeId ? null : readDeskDraft(),
+  );
 
-  const [screen, setScreen] = useState<Screen>("choose");
-  const [intake, setIntake] = useState<Intake>("type");
-  const [sourceKind, setSourceKind] = useState<SourceKind>("original");
-  const [title, setTitle] = useState("");
-  const [sourceTitle, setSourceTitle] = useState("");
-  const [sourceUrl, setSourceUrl] = useState("");
-  const [titleTouched, setTitleTouched] = useState(false);
+  const [screen, setScreen] = useState<Screen>(seed?.screen ?? "choose");
+  const [intake, setIntake] = useState<Intake>(seed?.intake ?? "type");
+  const [sourceKind, setSourceKind] = useState<SourceKind>(
+    seed?.sourceKind ?? "original",
+  );
+  const [title, setTitle] = useState(seed?.title ?? "");
+  const [sourceTitle, setSourceTitle] = useState(seed?.sourceTitle ?? "");
+  const [sourceUrl, setSourceUrl] = useState(seed?.sourceUrl ?? "");
+  const [titleTouched, setTitleTouched] = useState(seed?.titleTouched ?? false);
   const [lookupState, setLookupState] = useState<
     "idle" | "looking" | "found" | "miss"
   >("idle");
   const [extracting, setExtracting] = useState(false);
-  const [extractNote, setExtractNote] = useState<string | null>(null);
+  const [extractNote, setExtractNote] = useState<string | null>(
+    pickupNote(seed),
+  );
   const [readFrom, setReadFrom] = useState<ScanKind | null>(null);
   const [readFields, setReadFields] = useState<ReadFields>(EMPTY_READ);
   const [intakeShots, setIntakeShots] = useState<IntakeShot[]>([]);
   const [coverPick, setCoverPick] = useState<number | null>(null);
-  const [story, setStory] = useState("");
-  const [bakedOn, setBakedOn] = useState(() =>
-    new Date().toISOString().slice(0, 10),
+  const [story, setStory] = useState(seed?.story ?? "");
+  const [bakedOn, setBakedOn] = useState(
+    () => seed?.bakedOn ?? new Date().toISOString().slice(0, 10),
   );
-  const [showDate, setShowDate] = useState(false);
-  const [changes, setChanges] = useState<ChangeDraft[]>([]);
-  const changeSerial = useRef(0);
-  const [makes, setMakes] = useState("");
-  const [ingredients, setIngredients] = useState("");
-  const [steps, setSteps] = useState("");
+  const [showDate, setShowDate] = useState(seed?.showDate ?? false);
+  const [changes, setChanges] = useState<ChangeDraft[]>(seed?.changes ?? []);
+  const changeSerial = useRef(changeSerialFrom(seed?.changes ?? []));
+  const [makes, setMakes] = useState(seed?.makes ?? "");
+  const [ingredients, setIngredients] = useState(seed?.ingredients ?? "");
+  const [steps, setSteps] = useState(seed?.steps ?? "");
   const [originStorageId, setOriginStorageId] = useState<Id<"_storage"> | null>(
     null,
   );
@@ -281,8 +313,10 @@ export function WriteDesk({
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const [pile, setPile] = useState<DraftCard[]>([]);
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [pile, setPile] = useState<DraftCard[]>(seed?.pile ?? []);
+  const [editingIndex, setEditingIndex] = useState<number | null>(
+    seed?.editingIndex ?? null,
+  );
   const [editingBakeId, setEditingBakeId] = useState<Id<"bakes"> | null>(null);
   const [editingSlug, setEditingSlug] = useState<string | null>(null);
   const [coverCleared, setCoverCleared] = useState(false);
@@ -330,8 +364,14 @@ export function WriteDesk({
     }
   }, [blocker.state]);
 
+  useEffect(() => watchWriteDeskFields(), []);
+
   useEffect(() => {
-    if (!deskDirty) {
+    const photoAtRisk =
+      photoFile !== null ||
+      originPreview !== null ||
+      intakeShots.length > 0;
+    if (!deskDirty || (editingBakeId === null && !photoAtRisk)) {
       return;
     }
     function onBeforeUnload(event: BeforeUnloadEvent) {
@@ -340,7 +380,60 @@ export function WriteDesk({
     }
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [deskDirty]);
+  }, [deskDirty, editingBakeId, photoFile, originPreview, intakeShots.length]);
+
+  useEffect(() => {
+    if (editingBakeId || screen === "choose") {
+      return;
+    }
+    writeDeskDraft({
+      version: 1,
+      screen,
+      intake,
+      sourceKind,
+      title,
+      sourceTitle,
+      sourceUrl,
+      titleTouched,
+      story,
+      bakedOn,
+      showDate,
+      changes,
+      makes,
+      ingredients,
+      steps,
+      pile,
+      editingIndex,
+      hadPhoto:
+        photoFile !== null ||
+        intakeShots.length > 0 ||
+        (originIsImage &&
+          (originPreview !== null || originStorageId !== null)),
+    });
+  }, [
+    editingBakeId,
+    screen,
+    intake,
+    sourceKind,
+    title,
+    sourceTitle,
+    sourceUrl,
+    titleTouched,
+    story,
+    bakedOn,
+    showDate,
+    changes,
+    makes,
+    ingredients,
+    steps,
+    pile,
+    editingIndex,
+    photoFile,
+    intakeShots.length,
+    originIsImage,
+    originPreview,
+    originStorageId,
+  ]);
 
   useEffect(() => {
     if (!photoFile) {
@@ -892,11 +985,17 @@ export function WriteDesk({
     if (next === "link") {
       setSourceKind("original");
       setScreen("card");
+      window.setTimeout(() => {
+        document.getElementById("sourceUrl")?.focus();
+      }, 0);
       return;
     }
     if (next === "type") {
       setSourceKind("original");
       setScreen("card");
+      window.setTimeout(() => {
+        document.getElementById("bake-title")?.focus();
+      }, 0);
       return;
     }
     fileInput.current?.click();
@@ -912,6 +1011,9 @@ export function WriteDesk({
   }
 
   function clearDesk() {
+    if (editingBakeId === null) {
+      clearDeskDraft();
+    }
     const seen = new Set<string>();
     for (const shot of intakeShots) {
       if (shot.previewUrl.startsWith("blob:") && !seen.has(shot.previewUrl)) {
@@ -1272,7 +1374,10 @@ export function WriteDesk({
   }
 
   return (
-    <div className="write-desk">
+    <div
+      className="write-desk"
+      aria-busy={extracting || pending ? true : undefined}
+    >
       <PageTitle
         title={`${editingBakeId ? "Edit recipe" : "Add a recipe"} · ${SITE_SHORT}`}
       />
@@ -1339,12 +1444,14 @@ export function WriteDesk({
             </p>
           ) : null}
           {extracting ? (
-            <p role="status" className="mt-8 text-[18px] text-ink-soft">
-              {extractNote ??
-                "Reading the file. If there are a lot of recipes, this can take a minute."}
-            </p>
+            <div className="write-desk-status" role="status">
+              <p className="text-[18px] leading-7 text-ink">
+                {extractNote ??
+                  "Reading the file. If there are a lot of recipes, this can take a minute."}
+              </p>
+            </div>
           ) : (
-            <div className="mt-8 flex flex-col items-start gap-3">
+            <div className="write-desk-choices mt-8">
               <button
                 type="button"
                 className="book-press book-press-text book-press-save"
@@ -1374,7 +1481,7 @@ export function WriteDesk({
               </button>
               <button
                 type="button"
-                className="min-h-12 cursor-pointer text-[17px] text-ink-soft underline decoration-rule underline-offset-4 hover:text-cinnamon-deep"
+                className="book-press book-press-text"
                 onClick={() => start("type")}
               >
                 Type it myself
@@ -1469,7 +1576,7 @@ export function WriteDesk({
               {error}
             </p>
           ) : null}
-          <div className="sticky bottom-0 z-10 mt-8 -mx-2 border-t border-rule bg-paper px-2 py-3">
+          <div className="write-desk-savebar sticky bottom-0 z-10 mt-8 -mx-2 border-t border-rule bg-paper px-2 py-3">
             <button
               type="button"
               className="book-press book-press-text book-press-save w-full"
@@ -1491,6 +1598,19 @@ export function WriteDesk({
           noValidate
           onSubmit={handleSubmit}
           aria-describedby={error ? formErrorId : undefined}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter") {
+              return;
+            }
+            const target = event.target;
+            if (
+              target instanceof HTMLTextAreaElement ||
+              target instanceof HTMLButtonElement
+            ) {
+              return;
+            }
+            event.preventDefault();
+          }}
         >
           <button
             type="button"
@@ -1609,6 +1729,7 @@ export function WriteDesk({
               </Label>
               <input
                 id="bake-title"
+                type="text"
                 value={title}
                 onChange={(event) => {
                   setTitleTouched(true);
@@ -1656,6 +1777,10 @@ export function WriteDesk({
                     id="sourceUrl"
                     type="url"
                     inputMode="url"
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    enterKeyHint="go"
                     value={sourceUrl}
                     onChange={(event) => setSourceUrl(event.target.value)}
                     onBlur={(event) =>
@@ -1696,6 +1821,10 @@ export function WriteDesk({
                   </Label>
                   <Input
                     id="sourceTitle"
+                    type="text"
+                    autoCapitalize="words"
+                    enterKeyHint="next"
+                    autoComplete="off"
                     value={sourceTitle}
                     onChange={(event) => setSourceTitle(event.target.value)}
                     placeholder={sourceNote(sourceKind)?.placeholder}
@@ -1708,6 +1837,8 @@ export function WriteDesk({
                 <Label htmlFor="story">How it went</Label>
                 <Textarea
                   id="story"
+                  autoCapitalize="sentences"
+                  enterKeyHint="enter"
                   value={story}
                   onChange={(event) => setStory(event.target.value)}
                   placeholder="Always a hit! Sunday morning…"
@@ -1735,6 +1866,10 @@ export function WriteDesk({
             </Label>
             <Input
               id="makes"
+              type="text"
+              autoCapitalize="sentences"
+              autoComplete="off"
+              enterKeyHint="next"
               value={makes}
               onChange={(event) => setMakes(event.target.value)}
               placeholder={MAKES_HINT[trayFor(title, sourceTitle)]}
@@ -1743,46 +1878,30 @@ export function WriteDesk({
 
             <div className="write-desk-recipe-cols mt-6">
               <div>
-                <Label
-                  htmlFor="ingredients"
-                  className="text-[17px] font-medium tracking-[0.02em] text-cinnamon-deep"
-                >
-                  What went in
-                </Label>
-                <p className="mt-1 text-[15px] leading-6 text-ink-soft">
-                  One per line — so you can search later. Leave this blank if the photo is enough.
-                </p>
-                <ReadFromLine from={readFrom} show={readFields.ingredients} />
-                <Textarea
-                  id="ingredients"
+                <RecipeLines
+                  legend="What went in"
+                  hint="One per line — so you can search later. Leave this blank if the photo is enough."
                   value={ingredients}
-                  onChange={(event) => setIngredients(event.target.value)}
-                  placeholder={
-                    "3–6 bell peppers\nwhite rice\nblack beans\ntomatoes"
-                  }
-                  className="mt-3 min-h-52 w-full"
-                />
+                  onChange={setIngredients}
+                  placeholder="3–6 bell peppers"
+                  noun="ingredient"
+                  autoCapitalize="off"
+                >
+                  <ReadFromLine from={readFrom} show={readFields.ingredients} />
+                </RecipeLines>
               </div>
               <div>
-                <Label
-                  htmlFor="steps"
-                  className="text-[17px] font-medium tracking-[0.02em] text-cinnamon-deep"
-                >
-                  How
-                </Label>
-                <p className="mt-1 text-[15px] leading-6 text-ink-soft">
-                  One step per line. Leave this blank if you don't have them yet.
-                </p>
-                <ReadFromLine from={readFrom} show={readFields.steps} />
-                <Textarea
-                  id="steps"
+                <RecipeLines
+                  legend="How"
+                  hint="One step per line. Leave this blank if you don't have them yet."
                   value={steps}
-                  onChange={(event) => setSteps(event.target.value)}
-                  placeholder={
-                    "Preheat oven to 400.\nCook the rice.\nStuff and bake."
-                  }
-                  className="mt-3 min-h-52 w-full"
-                />
+                  onChange={setSteps}
+                  placeholder="Preheat oven to 400."
+                  noun="step"
+                  autoCapitalize="sentences"
+                >
+                  <ReadFromLine from={readFrom} show={readFields.steps} />
+                </RecipeLines>
               </div>
             </div>
           </section>
@@ -1839,6 +1958,9 @@ export function WriteDesk({
                       }}
                       placeholder={changeHint(row.move)}
                       aria-label={`${row.move} what`}
+                      autoCapitalize="sentences"
+                      enterKeyHint="done"
+                      autoComplete="off"
                       className="min-h-12 min-w-[10rem] flex-1"
                     />
                     <button
@@ -1867,8 +1989,8 @@ export function WriteDesk({
               {error}
             </p>
           ) : null}
-          <div className="sticky bottom-0 z-10 mt-8 -mx-2 border-t border-rule bg-paper px-2 py-3">
-            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+          <div className="write-desk-savebar sticky bottom-0 z-10 mt-8 -mx-2 border-t border-rule bg-paper px-2 py-3">
+            <div className="write-desk-actions flex flex-col gap-3 sm:flex-row sm:flex-wrap">
               <button
                 type="submit"
                 className="book-press book-press-text book-press-save"

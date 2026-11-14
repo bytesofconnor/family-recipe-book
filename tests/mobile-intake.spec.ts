@@ -186,6 +186,36 @@ async function expectSaved(page: Page, title: string, leaked: string[]) {
   expect(leaked, leaked.join("\n")).toEqual([]);
 }
 
+function lineGroup(page: Page, name: string) {
+  return page.getByRole("group", { name, exact: true });
+}
+
+async function fillLines(page: Page, name: string, text: string) {
+  const group = lineGroup(page, name);
+  const parts = text.split("\n");
+  const boxes = group.getByRole("textbox");
+  await boxes.nth(0).fill(parts[0] ?? "");
+  for (let index = 1; index < parts.length; index += 1) {
+    await group.getByRole("button", { name: "Add another" }).click();
+    await boxes.nth(index).fill(parts[index] ?? "");
+  }
+}
+
+async function expectLines(page: Page, name: string, text: string) {
+  const group = lineGroup(page, name);
+  const boxes = group.getByRole("textbox");
+  if (text.length === 0) {
+    await expect(boxes).toHaveCount(1);
+    await expect(boxes.nth(0)).toHaveValue("");
+    return;
+  }
+  const parts = text.split("\n");
+  await expect(boxes).toHaveCount(parts.length);
+  for (let index = 0; index < parts.length; index += 1) {
+    await expect(boxes.nth(index)).toHaveValue(parts[index] ?? "");
+  }
+}
+
 async function choosePhotos(page: Page, files: Parameters<Locator["setInputFiles"]>[0]) {
   await page.getByRole("button", { name: "Take or choose photos" }).click();
   await page.getByLabel("Recipe photos").setInputFiles(files);
@@ -400,7 +430,7 @@ test.describe("mobile recipe intake", () => {
     await expect(page.getByLabel("What do you call it?")).toHaveValue(
       "Sunday loaf",
     );
-    await page.getByLabel("What went in").fill("oats\nmilk");
+    await fillLines(page, "What went in", "oats\nmilk");
     await saveFromCard(page, "Sunday loaf", leaked);
     await expect(
       page.locator("header").getByRole("link", { name: "Sunday loaf", exact: true }),
@@ -423,7 +453,7 @@ test.describe("mobile recipe intake", () => {
     ).toBeVisible();
     await expectNoSeriousAxe(page);
     await page.getByLabel("What do you call it?").fill("Kitchen muffins");
-    await page.getByLabel("What went in").fill("flour\nblueberries");
+    await fillLines(page, "What went in", "flour\nblueberries");
     await saveFromCard(page, "Kitchen muffins", leaked);
     await expect(
       page.getByRole("link", { name: "Started from Sally" }),
@@ -443,7 +473,7 @@ test.describe("mobile recipe intake", () => {
     ).toBeVisible();
     await expect(page.getByLabel("TikTok link")).toHaveValue(/tiktok\.com/);
     await page.getByLabel("What do you call it?").fill("Crispy rice");
-    await page.getByLabel("What went in").fill("rice\noil");
+    await fillLines(page, "What went in", "rice\noil");
     await saveFromCard(page, "Crispy rice", leaked);
     await expect(page.getByRole("link", { name: "From TikTok" })).toHaveAttribute(
       "href",
@@ -462,7 +492,7 @@ test.describe("mobile recipe intake", () => {
     ).toBeVisible();
     await expect(page.getByLabel("Pinterest link")).toHaveValue(/pin\.it/);
     await page.getByLabel("What do you call it?").fill("Saved brownies");
-    await page.getByLabel("What went in").fill("chocolate\nbutter");
+    await fillLines(page, "What went in", "chocolate\nbutter");
     await saveFromCard(page, "Saved brownies", leaked);
     await expect(
       page.getByRole("link", { name: "From Pinterest" }),
@@ -492,7 +522,7 @@ test.describe("mobile recipe intake", () => {
       "https://example.com/not-a-recipe",
     );
     await page.getByLabel("What do you call it?").fill("Pantry soup");
-    await page.getByLabel("What went in").fill("broth\nbeans");
+    await fillLines(page, "What went in", "broth\nbeans");
     await saveFromCard(page, "Pantry soup", leaked);
     await expect(page.getByText("From this kitchen")).toBeVisible();
   });
@@ -524,7 +554,7 @@ test.describe("mobile recipe intake", () => {
     const { leaked, upload } = await start(page);
     await page.getByRole("button", { name: "Type it myself" }).click();
     await page.getByLabel("What do you call it?").fill("Card photo loaf");
-    await page.getByLabel("What went in").fill("flour\nsalt");
+    await fillLines(page, "What went in", "flour\nsalt");
     await page.getByLabel("Tap to add a photo").evaluate((input) => {
       if (!(input instanceof HTMLInputElement)) {
         throw new Error("missing photo field");
@@ -558,12 +588,12 @@ test.describe("mobile recipe intake", () => {
     await expect(page.getByLabel("What do you call it?")).toHaveValue(
       "Sunday stew",
     );
-    await expect(page.getByLabel("What went in")).toHaveValue("lamb\nonion");
-    await expect(page.locator("#steps")).toHaveValue("Simmer");
+    await expectLines(page, "What went in", "lamb\nonion");
+    await expectLines(page, "How", "Simmer");
     await expect(page.getByLabel("How it went")).toHaveValue(
       "Better the next day",
     );
-    await page.getByLabel("What went in").fill("beef\nonion");
+    await fillLines(page, "What went in", "beef\nonion");
     await expectNoSeriousAxe(page);
     await saveFromCard(page, "Sunday stew", leaked, { fillStory: false });
     await expect(page.getByText("beef", { exact: true })).toBeVisible();
@@ -586,8 +616,8 @@ test.describe("mobile recipe intake", () => {
     await expect(page.getByLabel("What do you call it?")).toHaveValue(
       "Half a card",
     );
-    await expect(page.getByLabel("What went in")).toHaveValue("");
-    await expect(page.locator("#steps")).toHaveValue("");
+    await expectLines(page, "What went in", "");
+    await expectLines(page, "How", "");
     await expect(
       page.getByText("Read from the photo. Change it if it's wrong."),
     ).toHaveCount(1);
@@ -608,7 +638,7 @@ test.describe("mobile recipe intake", () => {
       page.getByText("Couldn't read words on this. You can still save it."),
     ).toBeVisible();
     await expect(page.getByLabel("What do you call it?")).toHaveValue("scan fail");
-    await expect(page.getByLabel("What went in")).toHaveValue("");
+    await expectLines(page, "What went in", "");
     await expect(
       page.getByText("Read from the photo. Change it if it's wrong."),
     ).toHaveCount(0);
@@ -649,7 +679,7 @@ test.describe("mobile recipe intake", () => {
     await expect(page.getByLabel("What do you call it?")).toHaveValue(
       "Sunday stew",
     );
-    await expect(page.getByLabel("What went in")).toHaveValue("lamb\npotato");
+    await expectLines(page, "What went in", "lamb\npotato");
     await saveFromCard(page, "Sunday stew", leaked, { fillStory: false });
     await expect(page.getByText("lamb", { exact: true })).toBeVisible();
     await expect(page.getByText("potato", { exact: true })).toBeVisible();
@@ -670,8 +700,8 @@ test.describe("mobile recipe intake", () => {
       page.getByText("Read from the link. Change it if it's wrong."),
     ).toHaveCount(4);
     await expect(page.getByLabel("What do you call it?")).toHaveValue("Link stew");
-    await expect(page.getByLabel("What went in")).toHaveValue("beans\nstock");
-    await page.getByLabel("What went in").fill("beans\nkale");
+    await expectLines(page, "What went in", "beans\nstock");
+    await fillLines(page, "What went in", "beans\nkale");
     await expect(
       page.getByRole("button", { name: "Put it in the book" }),
     ).toBeEnabled();
@@ -694,12 +724,181 @@ test.describe("mobile recipe intake", () => {
       ),
     ).toBeVisible();
     await expect(page.getByLabel("What do you call it?")).toHaveValue("");
-    await expect(page.getByLabel("What went in")).toHaveValue("");
+    await expectLines(page, "What went in", "");
     await expect(page.getByRole("button", { name: "Put it in the book" })).toBeEnabled();
     await page.getByLabel("What do you call it?").fill("Quiet soup");
     await saveFromCard(page, "Quiet soup", leaked, { fillStory: false });
     await expect(
       page.getByRole("heading", { name: "What went in" }),
     ).toHaveCount(0);
+  });
+});
+
+const PHONE_CHOICES = [
+  "Take or choose photos",
+  "Upload a PDF or PowerPoint",
+  "Paste a link — Sally, TikTok, Pinterest",
+  "Type it myself",
+] as const;
+
+async function expectAboveDock(page: Page, locator: Locator) {
+  await locator.scrollIntoViewIfNeeded();
+  const box = await locator.boundingBox();
+  expect(box).not.toBeNull();
+  expect(Math.min(box!.width, box!.height)).toBeGreaterThanOrEqual(44);
+  const dockBox = await page.locator(".book-dock").boundingBox();
+  expect(dockBox).not.toBeNull();
+  expect(box!.y + box!.height).toBeLessThanOrEqual(dockBox!.y + 1);
+  return box!;
+}
+
+test.describe("add paths at 390", () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+  test.describe.configure({ timeout: 60_000 });
+
+  test("each add path is a full-width button", async ({ page }) => {
+    await start(page);
+    const boxes = [];
+    for (const name of PHONE_CHOICES) {
+      boxes.push(
+        await expectAboveDock(
+          page,
+          page.getByRole("button", { name, exact: true }),
+        ),
+      );
+    }
+    const width = boxes[0]!.width;
+    for (const box of boxes) {
+      expect(Math.abs(box.width - width)).toBeLessThanOrEqual(2);
+    }
+    const desk = await page.locator(".write-desk").boundingBox();
+    expect(width).toBeGreaterThan((desk?.width ?? 0) * 0.9);
+    const border = await page
+      .getByRole("button", { name: "Type it myself", exact: true })
+      .evaluate((el) => getComputedStyle(el).borderTopWidth);
+    expect(parseFloat(border)).toBeGreaterThanOrEqual(2);
+  });
+
+  test("photo and file pickers offer the camera and the library", async ({
+    page,
+  }) => {
+    await start(page);
+    const photos = page
+      .waitForEvent("filechooser", { timeout: 3_000 })
+      .catch(() => null);
+    await page.getByRole("button", { name: "Take or choose photos" }).click();
+    await photos;
+    const photoInput = page.getByLabel("Recipe photos");
+    await expect(photoInput).toHaveAttribute("accept", "image/*");
+    await expect(photoInput).toHaveAttribute("multiple", "");
+    expect(await photoInput.getAttribute("capture")).toBeNull();
+
+    await page.goto("/add");
+    await expect(
+      page.getByText("Put it in the book however you already have it"),
+    ).toBeVisible();
+    const files = page
+      .waitForEvent("filechooser", { timeout: 3_000 })
+      .catch(() => null);
+    await page.getByRole("button", { name: "Upload a PDF or PowerPoint" }).click();
+    await files;
+    const fileInput = page.getByLabel("Recipe file");
+    await expect(fileInput).toHaveAttribute("accept", /pdf/);
+    expect(await fileInput.getAttribute("capture")).toBeNull();
+  });
+
+  test("typing keeps save, reorder, and a reload draft in reach", async ({
+    page,
+  }) => {
+    await start(page);
+    await page.getByRole("button", { name: "Type it myself", exact: true }).click();
+    await expect(page.getByLabel("What do you call it?")).toBeFocused();
+    const save = await expectAboveDock(
+      page,
+      page.getByRole("button", { name: "Put it in the book" }),
+    );
+    const later = await expectAboveDock(
+      page,
+      page.getByRole("button", { name: "Save for later" }),
+    );
+    expect(Math.abs(save.width - later.width)).toBeLessThanOrEqual(2);
+    const cardPhoto = page.getByLabel("Tap to add a photo");
+    await expect(cardPhoto).toHaveAttribute("accept", "image/*");
+    expect(await cardPhoto.getAttribute("capture")).toBeNull();
+
+    const step = lineGroup(page, "How").getByRole("textbox");
+    await step.focus();
+    const stepBox = await step.boundingBox();
+    const dockBox = await page.locator(".book-dock").boundingBox();
+    expect(stepBox).not.toBeNull();
+    expect(dockBox).not.toBeNull();
+    expect(stepBox!.y + stepBox!.height).toBeLessThanOrEqual(dockBox!.y + 1);
+    const margin = await step.evaluate(
+      (el) => getComputedStyle(el).scrollMarginBottom,
+    );
+    expect(parseFloat(margin)).toBeGreaterThan(40);
+
+    await page.getByLabel("What do you call it?").fill("Sunday toast");
+    await fillLines(page, "What went in", "bread\nbutter");
+    const group = lineGroup(page, "What went in");
+    const up = group.getByRole("button", { name: "Move ingredient 2 up" });
+    const upBox = await up.boundingBox();
+    expect(upBox).not.toBeNull();
+    expect(Math.min(upBox!.width, upBox!.height)).toBeGreaterThanOrEqual(44);
+    await up.click();
+    await expect(group.getByRole("textbox").nth(0)).toHaveValue("butter");
+    await expect.poll(async () =>
+      page.evaluate(() => sessionStorage.getItem("write-desk-draft")),
+    ).toContain("butter\\nbread");
+    await page.reload();
+    await expect(page.getByLabel("What do you call it?")).toHaveValue(
+      "Sunday toast",
+    );
+    await expect(page.getByText("Picked up where you left off.")).toBeVisible();
+    await expectLines(page, "What went in", "butter\nbread");
+  });
+
+  test("a pasted link keeps the address field and save above the tab bar", async ({
+    page,
+  }) => {
+    await start(page);
+    await page
+      .getByRole("button", { name: "Paste a link — Sally, TikTok, Pinterest" })
+      .click();
+    const url = page.locator("#sourceUrl");
+    await expect(url).toBeFocused();
+    await expect(url).toHaveAttribute("type", "url");
+    await expect(url).toHaveAttribute("enterkeyhint", "go");
+    await expect(url).toHaveAttribute("autocapitalize", "off");
+    await expectAboveDock(
+      page,
+      page.getByRole("button", { name: "Put it in the book" }),
+    );
+  });
+
+  test("a scanned pile keeps its save action above the tab bar", async ({
+    page,
+  }) => {
+    await start(page);
+    await page.getByRole("button", { name: "Upload a PDF or PowerPoint" }).click();
+    await page.getByLabel("Recipe file").setInputFiles({
+      name: "recipes-pile.pptx",
+      mimeType:
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      buffer: Buffer.from("pptx"),
+    });
+    await expect(
+      page.getByRole("heading", { name: "These recipes" }),
+    ).toBeVisible();
+    const save = await expectAboveDock(
+      page,
+      page.getByRole("button", { name: "Put 2 in the book" }),
+    );
+    const desk = await page.locator(".write-desk").boundingBox();
+    expect(save.width).toBeGreaterThan((desk?.width ?? 0) * 0.9);
+    await expectAboveDock(
+      page,
+      page.getByRole("button", { name: "Open and fix" }).first(),
+    );
   });
 });
