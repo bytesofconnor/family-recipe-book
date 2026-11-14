@@ -1556,7 +1556,7 @@ export function WriteDesk({
                       </p>
                       <button
                         type="button"
-                        className="mt-2 min-h-12 cursor-pointer text-[17px] underline decoration-rule underline-offset-4 hover:text-cinnamon-deep"
+                        className="book-press book-press-text mt-3 w-full sm:w-auto"
                         onClick={() => openDraft(index)}
                       >
                         Open and fix
@@ -1614,7 +1614,7 @@ export function WriteDesk({
         >
           <button
             type="button"
-            className="self-start min-h-12 cursor-pointer text-[17px] text-ink-soft underline decoration-rule underline-offset-4 hover:text-cinnamon-deep"
+            className="book-press book-press-text self-start"
             onClick={pile.length > 1 ? returnToPile : startOver}
           >
             {editingBakeId
