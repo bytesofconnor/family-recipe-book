@@ -589,7 +589,9 @@ test.describe("mobile recipe intake", () => {
     await expect(page.getByLabel("Cook time")).toHaveValue("40 min");
     await page.getByLabel("Ingredient 2").fill("pepper");
     await expect(page.getByLabel("Ingredient 2")).toHaveValue("pepper");
-    await page.getByRole("button", { name: "Edit the words yourself" }).click();
+    const rawWords = page.getByRole("button", { name: "Edit the words yourself" });
+    await rawWords.evaluate((node) => node.scrollIntoView({ block: "center" }));
+    await rawWords.click();
     await expect(page.getByLabel("The words from the card")).toHaveValue(
       /Sunday stew/,
     );
@@ -677,10 +679,11 @@ test.describe("mobile recipe intake", () => {
       mimeType: "image/jpeg",
       buffer: JPEG,
     });
-    await expect(
-      page.getByText("Couldn't read words on this. You can still save it."),
-    ).toBeVisible();
-    await expect(page.getByLabel("What do you call it?")).toHaveValue("scan fail");
+    await expect(page.getByRole("alert")).toHaveText(
+      "Couldn't read words on this. You can still save it.",
+    );
+    await expect(page.getByLabel("What do you call it?")).toHaveValue("");
+    await page.getByLabel("What do you call it?").fill("scan fail");
     await expectLines(page, "What went in", "");
     await expect(
       page.getByText("Read from the photo. Change it if it's wrong."),
@@ -697,16 +700,82 @@ test.describe("mobile recipe intake", () => {
       mimeType: "image/jpeg",
       buffer: JPEG,
     });
-    await expect(
-      page.getByText("Couldn't read words on this. You can still save it."),
-    ).toBeVisible();
-    await expect(page.getByRole("alert")).toHaveCount(0);
-    await expect(page.getByLabel("What do you call it?")).toHaveValue(
-      "scan throw",
+    await expect(page.getByRole("alert")).toHaveText(
+      "The recipe didn't come through. The picture is still here. You can try again, or type it.",
     );
+    await expect(page.getByLabel("What do you call it?")).toHaveValue("");
+    await expect(page.getByRole("img", { name: "Recipe photo" })).toBeVisible();
     await page.getByLabel("What do you call it?").fill("Quiet loaf");
     await saveFromCard(page, "Quiet loaf", leaked, { fillStory: false });
   });
+
+  test("reading a photo shows progress, then the review, then save", async ({
+    page,
+  }) => {
+    const { leaked } = await start(page);
+    const reading = page.getByText("Reading the photo…");
+    await choosePhotos(page, {
+      name: "scan-slow.jpg",
+      mimeType: "image/jpeg",
+      buffer: JPEG,
+    });
+    await expect(reading).toBeVisible();
+    await expect(page.getByLabel("What do you call it?")).toHaveValue(
+      "Sunday stew",
+    );
+    await expect(page.getByLabel("Amount 1")).toHaveValue("½");
+    await expect(page.getByText("Check this").first()).toBeVisible();
+    await saveFromCard(page, "Sunday stew", leaked, { fillStory: false });
+    await expect(page.getByText("½ cup flour")).toBeVisible();
+  });
+
+  const failedReads = [
+    {
+      name: "scan-timeout.jpg",
+      message:
+        "Reading the photo took too long. The picture is still here. You can try again, or type the recipe.",
+    },
+    {
+      name: "scan-badjson.jpg",
+      message:
+        "The recipe didn't come through. The picture is still here. You can try again, or type it.",
+    },
+    {
+      name: "scan-huge.heic",
+      message:
+        "This picture is in a format the reader can't open. It's still attached. Paste the words, or take it again.",
+    },
+    {
+      name: "scan-huge.png",
+      message:
+        "That photo is too big to read. It's still attached. Try a smaller picture, or type the recipe.",
+    },
+    {
+      name: "not-a-recipe.jpg",
+      message: "Couldn't read words on this. You can still save it.",
+    },
+  ] as const;
+
+  for (const sample of failedReads) {
+    test(`a ${sample.name} read keeps the photo and the empty fields`, async ({
+      page,
+    }) => {
+      await start(page);
+      await choosePhotos(page, {
+        name: sample.name,
+        mimeType: sample.name.endsWith(".png")
+          ? "image/png"
+          : sample.name.endsWith(".heic")
+            ? "image/heic"
+            : "image/jpeg",
+        buffer: JPEG,
+      });
+      await expect(page.getByRole("alert")).toHaveText(sample.message);
+      await expect(page.getByLabel("What do you call it?")).toHaveValue("");
+      await expectLines(page, "What went in", "");
+      await expect(page.getByRole("img", { name: "Recipe photo" })).toBeVisible();
+    });
+  }
 
   test("several photos are read as one recipe", async ({ page }) => {
     const { leaked } = await start(page);

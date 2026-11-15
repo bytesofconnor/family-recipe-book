@@ -22,13 +22,22 @@ export async function downscalePhoto(file: File): Promise<File> {
     }
     ctx.drawImage(bitmap, 0, 0, width, height);
     bitmap.close();
-    const blob = await new Promise<Blob | null>((resolve) => {
+    const stem = file.name.replace(/\.[^.]+$/, "") || "photo";
+    let blob = await new Promise<Blob | null>((resolve) => {
       canvas.toBlob((next) => resolve(next), "image/jpeg", JPEG_QUALITY);
     });
-    if (!blob || blob.size === 0 || blob.size >= file.size) {
+    for (const quality of [0.6, 0.45, 0.32]) {
+      if (blob && blob.size > 0 && blob.size <= 1_200_000) break;
+      blob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob((next) => resolve(next), "image/jpeg", quality);
+      });
+    }
+    if (!blob || blob.size === 0) {
       return file;
     }
-    const stem = file.name.replace(/\.[^.]+$/, "") || "photo";
+    if (blob.size > 1_200_000 && file.type === "image/jpeg" && file.size < blob.size) {
+      return file;
+    }
     return new File([blob], `${stem}.jpg`, { type: "image/jpeg" });
   } catch {
     return file;
