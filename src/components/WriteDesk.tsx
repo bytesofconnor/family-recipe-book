@@ -1567,16 +1567,16 @@ export function WriteDesk({
               );
             })}
           </ul>
-          {error ? (
-            <p
-              id={formErrorId}
-              role="alert"
-              className="mt-6 text-[17px] text-cinnamon-deep"
-            >
-              {error}
-            </p>
-          ) : null}
           <div className="write-desk-savebar sticky bottom-0 z-10 mt-8 -mx-2 border-t border-rule bg-paper px-2 py-3">
+            {error ? (
+              <p
+                id={formErrorId}
+                role="alert"
+                className="mb-3 text-[17px] text-cinnamon-deep"
+              >
+                {error}
+              </p>
+            ) : null}
             <button
               type="button"
               className="book-press book-press-text book-press-save w-full"
@@ -1980,16 +1980,16 @@ export function WriteDesk({
             ) : null}
           </section>
 
-          {error ? (
-            <p
-              id={formErrorId}
-              role="alert"
-              className="mt-6 text-[17px] text-cinnamon-deep"
-            >
-              {error}
-            </p>
-          ) : null}
           <div className="write-desk-savebar sticky bottom-0 z-10 mt-8 -mx-2 border-t border-rule bg-paper px-2 py-3">
+            {error ? (
+              <p
+                id={formErrorId}
+                role="alert"
+                className="mb-3 text-[17px] text-cinnamon-deep"
+              >
+                {error}
+              </p>
+            ) : null}
             <div className="write-desk-actions flex flex-col gap-3 sm:flex-row sm:flex-wrap">
               <button
                 type="submit"

@@ -901,4 +901,23 @@ test.describe("add paths at 390", () => {
       page.getByRole("button", { name: "Open and fix" }).first(),
     );
   });
+
+  test("a missing name explains itself above the tab bar", async ({ page }) => {
+    await start(page);
+    await page.getByRole("button", { name: "Type it myself" }).click();
+    await page.getByRole("button", { name: "Put it in the book" }).click();
+    const alert = page.getByRole("alert");
+    await expect(alert).toHaveText("Give it a name so you can find it later.");
+    const box = await alert.boundingBox();
+    const save = await page
+      .getByRole("button", { name: "Put it in the book" })
+      .boundingBox();
+    const dock = await page.locator(".book-dock").boundingBox();
+    expect(box).not.toBeNull();
+    expect(save).not.toBeNull();
+    expect(dock).not.toBeNull();
+    expect(box!.y).toBeGreaterThanOrEqual(0);
+    expect(box!.y + box!.height).toBeLessThanOrEqual(save!.y + 1);
+    expect(save!.y + save!.height).toBeLessThanOrEqual(dock!.y + 1);
+  });
 });
