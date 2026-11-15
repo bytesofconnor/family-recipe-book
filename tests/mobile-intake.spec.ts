@@ -570,6 +570,49 @@ test.describe("mobile recipe intake", () => {
     expect(upload.types).toContain("image/heic");
   });
 
+  test("a structured scan reviews amounts and keeps a fix", async ({ page }) => {
+    const { leaked } = await start(page);
+    await choosePhotos(page, {
+      name: "scan-structured.jpg",
+      mimeType: "image/jpeg",
+      buffer: JPEG,
+    });
+    await expect(page.getByLabel("What do you call it?")).toHaveValue(
+      "Sunday stew",
+    );
+    await expect(page.getByLabel("Amount 1")).toHaveValue("½");
+    await expect(page.getByLabel("Unit 1")).toHaveValue("cup");
+    await expect(page.getByLabel("Ingredient 1")).toHaveValue("flour");
+    await expect(page.getByLabel("Ingredient 2")).toHaveValue("salt");
+    await expect(page.getByText("Check this").first()).toBeVisible();
+    await expect(page.getByLabel("Prep time")).toHaveValue("15 min");
+    await expect(page.getByLabel("Cook time")).toHaveValue("40 min");
+    await page.getByLabel("Ingredient 2").fill("pepper");
+    await expect(page.getByLabel("Ingredient 2")).toHaveValue("pepper");
+    await page.getByRole("button", { name: "Edit the words yourself" }).click();
+    await expect(page.getByLabel("The words from the card")).toHaveValue(
+      /Sunday stew/,
+    );
+    await expectNoSeriousAxe(page);
+    await saveFromCard(page, "Sunday stew", leaked, { fillStory: false });
+    await expect(page.getByText("½ cup flour")).toBeVisible();
+    await expect(page.getByText("pepper", { exact: true })).toBeVisible();
+    await expect(page.getByText("Prep 15 min")).toBeVisible();
+    await expect(page.getByText("Cook 40 min")).toBeVisible();
+  });
+
+  test("pasted words land in the same review", async ({ page }) => {
+    const { leaked } = await start(page);
+    await page.getByRole("button", { name: "Paste the words" }).click();
+    await page.getByLabel("The recipe").fill("Sunday stew\n1/2 cup flour\nSimmer");
+    await page.getByRole("button", { name: "Read it" }).click();
+    await expect(page.getByLabel("Amount 1")).toHaveValue("½");
+    await expect(page.getByLabel("Ingredient 1")).toHaveValue("flour");
+    await expect(page.getByText("Check this").first()).toBeVisible();
+    await saveFromCard(page, "Sunday stew", leaked, { fillStory: false });
+    await expect(page.getByText("½ cup flour")).toBeVisible();
+  });
+
   test("a photo scan fills the card, stays editable, and saves", async ({
     page,
   }) => {

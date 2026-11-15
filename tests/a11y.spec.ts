@@ -83,6 +83,7 @@ const SIGNED_IN_PAGES: ScanPage[] = [
     ready: "Put it in the book however you already have it",
     controls: [
       "Take or choose photos",
+      "Paste the words",
       "Upload a PDF or PowerPoint",
       "Type it myself",
       "Add a recipe",

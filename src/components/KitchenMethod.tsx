@@ -19,6 +19,8 @@ export function KitchenMethod({
   ingredients,
   steps,
   method,
+  prepTime,
+  cookTime,
   sourceTitle,
   sourceUrl,
   shared = false,
@@ -27,6 +29,8 @@ export function KitchenMethod({
   ingredients?: string[];
   steps?: string[];
   method?: string;
+  prepTime?: string;
+  cookTime?: string;
   sourceTitle: string;
   sourceUrl: string;
   shared?: boolean;
@@ -47,6 +51,11 @@ export function KitchenMethod({
   const shownScale: ScaleFactor = canScale ? scale : 1;
   const note = canScale ? batchNote(shownScale, makes, whatWentIn) : null;
   const yieldText = makes?.trim() ?? "";
+  const timeBits = [
+    prepTime?.trim() ? `Prep ${prepTime.trim()}` : "",
+    cookTime?.trim() ? `Cook ${cookTime.trim()}` : "",
+  ].filter((bit) => bit.length > 0);
+  const timeLine = timeBits.join(" · ");
 
   return (
     <section
@@ -106,6 +115,9 @@ export function KitchenMethod({
         <p className="mt-3 font-display text-[1.35rem] leading-8 text-cocoa">
           <ScaledText text={yieldText} factor={shownScale} />
         </p>
+      ) : null}
+      {timeLine ? (
+        <p className="mt-1 text-[17px] leading-7 text-ink-soft">{timeLine}</p>
       ) : null}
 
       {hasLists ? (
