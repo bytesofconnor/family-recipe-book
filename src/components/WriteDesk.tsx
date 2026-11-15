@@ -33,6 +33,12 @@ import {
 } from "@/lib/sources";
 import type { IngredientPart } from "../../convex/lib/ingredientLine";
 import {
+  missedPhotos,
+  READ_GATEWAY,
+  READ_MISSED,
+  READ_MISSED_LINK,
+} from "../../convex/lib/readFailure";
+import {
   readRecipeText,
   type FieldMarks,
 } from "../../convex/lib/recipeRead";
@@ -643,8 +649,8 @@ export function WriteDesk({
               card.ingredients.length === 0 &&
               card.steps.length === 0 &&
               (card.notes ?? "").trim().length === 0);
-          if (result.skipped || empty) {
-            if (result.skipped) {
+          if (result.readError || result.skipped || empty) {
+            if (result.skipped && !result.readError) {
               setExtractNote((note) =>
                 note === "Reading that link…" ? null : note,
               );
@@ -652,9 +658,8 @@ export function WriteDesk({
             }
             setReadFrom(null);
             setReadFields(EMPTY_READ);
-            setExtractNote(
-              "Couldn't read words on this link. You can still save it.",
-            );
+            setExtractNote(null);
+            setError(result.readError || READ_MISSED_LINK);
             return;
           }
           const snap = fieldSnap.current;
@@ -713,9 +718,8 @@ export function WriteDesk({
         })
         .catch(() => {
           if (!cancelled) {
-            setExtractNote(
-              "Couldn't read words on this link. You can still save it.",
-            );
+            setExtractNote(null);
+            setError(READ_MISSED_LINK);
           }
         });
     }, 700);
@@ -809,7 +813,24 @@ export function WriteDesk({
     fileName: string;
     photoCount: number;
     rawText?: string;
+    readError?: string;
   }) {
+    const missed =
+      input.readError ||
+      (input.kind === "photo" && input.cards.length === 0
+        ? input.photoCount > 1
+          ? missedPhotos(input.photoCount)
+          : READ_MISSED
+        : input.kind === "link" && input.cards.length === 0
+          ? READ_MISSED_LINK
+          : "");
+    if (missed) {
+      setError(missed);
+      setExtractNote(null);
+      setRawText(input.rawText ?? "");
+      setScreen("card");
+      return;
+    }
     const drafts = draftsFromExtract(input.cards);
     const scanned = drafts[0];
     const fallback = input.kind === "link" ? "" : titleFromFileName(input.fileName);
@@ -946,6 +967,7 @@ export function WriteDesk({
       let cards: Parameters<typeof finishScan>[0]["cards"] = [];
       let usedAi = false;
       let readText = "";
+      let readError = "";
       try {
         const extracted = await extractCard({
           ...writeAccess,
@@ -961,8 +983,10 @@ export function WriteDesk({
         cards = extracted.cards;
         usedAi = extracted.usedAi;
         readText = extracted.rawText;
+        readError = extracted.readError ?? "";
       } catch (caught) {
         console.error(caught);
+        readError = READ_GATEWAY;
       }
       finishScan({
         cards,
@@ -971,6 +995,7 @@ export function WriteDesk({
         fileName: prepared[0]!.name,
         photoCount: prepared.length,
         rawText: readText,
+        readError,
       });
     } catch (caught) {
       setError(messageFrom(caught, "Couldn't upload the photos."));
@@ -1034,6 +1059,7 @@ export function WriteDesk({
       let cards: Parameters<typeof finishScan>[0]["cards"] = [];
       let usedAi = false;
       let readText = "";
+      let readError = "";
       try {
         const extracted = await extractCard({
           ...writeAccess,
@@ -1044,8 +1070,10 @@ export function WriteDesk({
         cards = extracted.cards;
         usedAi = extracted.usedAi;
         readText = extracted.rawText;
+        readError = extracted.readError ?? "";
       } catch (caught) {
         console.error(caught);
+        readError = READ_GATEWAY;
       }
       finishScan({
         cards,
@@ -1054,9 +1082,16 @@ export function WriteDesk({
         fileName: prepared.name,
         photoCount: isImage ? 1 : 0,
         rawText: readText,
+        readError,
       });
     } catch (caught) {
-      setError(messageFrom(caught, "Couldn't read that file."));
+      setError(messageFrom(caught, "Couldn't upload that. Try again."));
+      setOriginStorageId(null);
+      setOriginPreview((current) => {
+        if (current?.startsWith("blob:")) URL.revokeObjectURL(current);
+        return null;
+      });
+      setOriginIsImage(false);
     } finally {
       setExtracting(false);
     }

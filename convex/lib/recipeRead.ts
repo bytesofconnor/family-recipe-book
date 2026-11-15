@@ -36,6 +36,8 @@ export type ModelVerdict =
 const ING_HEAD = /^(ingredients?|what went in|you need)\b/i;
 const STEP_HEAD = /^(how|steps?|directions?|method|instructions?)\b/i;
 const NOTE_HEAD = /^(notes?|aside)\b/i;
+const STOP_HEAD =
+  /^(related|you may also|comments?|subscribe|newsletter|nutrition facts|advertisement|more recipes|jump to|print recipe|rate this|leave a review|did you make|footer|copyright)\b/i;
 const YIELD_HEAD = /^(serves|servings|yield|makes)\b[:\s-]*(.*)$/i;
 const PREP_HEAD = /^(prep(?:aration)?(?:\s*time)?)\b[:\s-]*(.*)$/i;
 const COOK_HEAD = /^(cook(?:ing)?(?:\s*time)?|bake(?:\s*time)?)\b[:\s-]*(.*)$/i;
@@ -157,17 +159,27 @@ function stepFromUnknown(
   return { text, confidence: given ?? "high" };
 }
 
+function asList(value: unknown): unknown[] | null {
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string") {
+    return value
+      .split(/\n+/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+  }
+  return null;
+}
+
 function cardFromRow(row: Record<string, unknown>, index: number): ReadCard | string {
-  if (!Array.isArray(row.ingredients)) return `card ${index + 1} ingredients must be an array`;
-  if (!Array.isArray(row.steps)) return `card ${index + 1} steps must be an array`;
-  const title = asText(row.title);
-  const makes = asText(row.makes);
-  const notes = asText(row.notes);
+  const ingredientValues = asList(row.ingredients);
+  const stepValues = asList(row.steps);
+  if (!ingredientValues) return `card ${index + 1} ingredients must be a list`;
+  if (!stepValues) return `card ${index + 1} steps must be a list`;
+  const title = asText(row.title) ?? "";
+  const makes = asText(row.makes) ?? "";
+  const notes = asText(row.notes) ?? "";
   const prep = asTime(row.prepTime);
   const cook = asTime(row.cookTime);
-  if (title === null || makes === null || notes === null) {
-    return `card ${index + 1} title, makes, and notes must be text`;
-  }
   if (prep === null && row.prepTime !== undefined && row.prepTime !== null) {
     return `card ${index + 1} prepTime must be text or minutes`;
   }
@@ -175,14 +187,14 @@ function cardFromRow(row: Record<string, unknown>, index: number): ReadCard | st
     return `card ${index + 1} cookTime must be text or minutes`;
   }
   const parts: IngredientPart[] = [];
-  for (const [partIndex, value] of row.ingredients.entries()) {
+  for (const [partIndex, value] of ingredientValues.entries()) {
     const part = partFromUnknown(value, partIndex);
     if (typeof part === "string") return `card ${index + 1} ${part}`;
     if (part) parts.push(part);
   }
   const steps: string[] = [];
   const stepConfidence: Confidence[] = [];
-  for (const [stepIndex, value] of row.steps.entries()) {
+  for (const [stepIndex, value] of stepValues.entries()) {
     const step = stepFromUnknown(value, stepIndex);
     if (typeof step === "string") return `card ${index + 1} ${step}`;
     steps.push(step.text);
@@ -341,11 +353,21 @@ export function readRecipeText(raw: string, fileName?: string): ReadCard {
   let cookTime = "";
   let section: "unk" | "ing" | "step" | "note" = "unk";
   let sawHead = false;
+  let closed = false;
   const ingredientLines: string[] = [];
   const steps: string[] = [];
   const notes: string[] = [];
 
   for (const line of lines) {
+    if (closed) continue;
+    if (STOP_HEAD.test(line) || (section === "step" && steps.length >= 30)) {
+      closed = true;
+      continue;
+    }
+    if (section === "ing" && ingredientLines.length >= 40) {
+      section = "unk";
+      continue;
+    }
     const yieldHit = YIELD_HEAD.exec(line);
     if (yieldHit && (yieldHit[2] ?? "").trim().length > 0) {
       makes = makes || normalizeYield(yieldHit[1] ?? "", yieldHit[2] ?? "");
@@ -476,7 +498,9 @@ function recipeNode(value: unknown): Record<string, unknown> | null {
   const row = value as Record<string, unknown>;
   const type = row["@type"];
   const types = Array.isArray(type) ? type : [type];
-  if (types.some((entry) => entry === "Recipe")) return row;
+  if (types.some((entry) => typeof entry === "string" && /(^|\/)Recipe$/.test(entry))) {
+    return row;
+  }
   if (Array.isArray(row["@graph"])) {
     for (const node of row["@graph"]) {
       const found = recipeNode(node);
@@ -487,7 +511,11 @@ function recipeNode(value: unknown): Record<string, unknown> | null {
 }
 
 export function recipeFromHtml(html: string): ReadCard | null {
-  const blocks = [...html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)];
+  const blocks = [
+    ...html.matchAll(
+      /<script[^>]*\btype=(?:"application\/ld\+json"|'application\/ld\+json'|application\/ld\+json)(?=[\s>])[^>]*>([\s\S]*?)<\/script>/gi,
+    ),
+  ];
   for (const block of blocks) {
     let parsed: unknown;
     try {

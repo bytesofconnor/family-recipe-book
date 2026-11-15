@@ -1,14 +1,23 @@
 "use node";
 
-import { createGateway, generateText } from "ai";
 import { v } from "convex/values";
 import JSZip from "jszip";
 import { extractText, getDocumentProxy } from "unpdf";
 import { action, env } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { askRecipeModel } from "./lib/askRecipe";
 import {
-  emptyReadCard,
+  friendlyReadError,
+  imageGate,
+  logReadFailure,
+  READ_BAD_TYPE,
+  READ_GATEWAY,
+  READ_MISSED,
+  READ_MISSED_LINK,
+  READ_TOO_BIG,
+} from "./lib/readFailure";
+import {
   extractionInstructions,
   plainTextFromHtml,
   readRecipePages,
@@ -54,23 +63,16 @@ const extractReturn = v.object({
   usedAi: v.boolean(),
   rawText: v.string(),
   skipped: v.optional(v.boolean()),
+  readError: v.optional(v.string()),
 });
 
 const MAX_SCAN_IMAGES = 6;
-const MAX_SCAN_BYTES = 1_500_000;
 
 const scanFile = v.object({
   storageId: v.id("_storage"),
   fileName: v.string(),
   mimeType: v.string(),
 });
-
-/** Vision-capable free-tier models for recipe photos / scans. */
-const EXTRACT_MODEL = "google/gemini-2.5-flash";
-const EXTRACT_FALLBACKS = [
-  "google/gemini-2.5-flash-lite",
-  "openai/gpt-4o-mini",
-] as const;
 
 export const fromUpload = action({
   args: {
@@ -90,6 +92,7 @@ export const fromUpload = action({
     usedAi: boolean;
     rawText: string;
     skipped?: boolean;
+    readError?: string;
   }> => {
     await ctx.runQuery(internal.sallyCredit.assertWriter, {
       writerToken: args.writerToken,
@@ -122,15 +125,18 @@ export const fromUpload = action({
     const pages: string[] = [];
     const images: ScanImage[] = [];
     let skippedBig = 0;
+    let unreadable = 0;
     for (const file of loaded) {
       if (file.isImage) {
-        if (file.bytes.byteLength > MAX_SCAN_BYTES) {
-          skippedBig += 1;
+        const gate = imageGate(new Uint8Array(file.bytes));
+        if (!gate.ok) {
+          if (gate.error === "size") skippedBig += 1;
+          else unreadable += 1;
           continue;
         }
         images.push({
           bytes: file.bytes,
-          mime: file.mime || "image/jpeg",
+          mime: gate.mime,
           fileName: file.fileName,
         });
         continue;
@@ -143,6 +149,7 @@ export const fromUpload = action({
     const rawText = pages.join("\n\n---\n\n");
     const onlyImages = loaded.length > 0 && loaded.every((file) => file.isImage);
 
+    let readError: string | undefined;
     const apiKey = env.AI_GATEWAY_API_KEY?.trim();
     if (apiKey && (images.length > 0 || rawText.trim().length > 0)) {
       try {
@@ -158,30 +165,41 @@ export const fromUpload = action({
           return { cards, usedAi: true, rawText };
         }
         console.warn("Card extract: AI returned no parseable cards");
+        readError = READ_MISSED;
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        console.error("Card extract failed", message);
+        logReadFailure("Card extract failed", error);
+        readError = friendlyReadError(error);
       }
     } else if (!apiKey) {
       console.warn("Card extract: AI_GATEWAY_API_KEY missing");
     }
 
     if (onlyImages) {
+      if (images.length === 0 && skippedBig > 0 && unreadable === 0) {
+        readError = READ_TOO_BIG;
+      } else if (images.length === 0 && unreadable > 0) {
+        readError = READ_BAD_TYPE;
+      }
       return {
-        cards: [emptyReadCard(args.fileName)],
+        cards: [],
         usedAi: false,
         rawText,
         skipped: !apiKey,
+        readError: readError ?? READ_GATEWAY,
       };
     }
     if (rawText.trim().length > 0) {
-      return {
-        cards: readRecipePages(pages.length > 0 ? pages : [rawText], args.fileName),
-        usedAi: false,
-        rawText,
-      };
+      const local = readRecipePages(pages.length > 0 ? pages : [rawText], args.fileName);
+      if (local.some((card) => card.ingredients.length + card.steps.length > 0)) {
+        return { cards: local, usedAi: false, rawText };
+      }
     }
-    return { cards: [emptyReadCard(args.fileName)], usedAi: false, rawText };
+    return {
+      cards: [],
+      usedAi: false,
+      rawText,
+      readError: readError ?? READ_GATEWAY,
+    };
   },
 });
 
@@ -313,7 +331,6 @@ async function cardsWithAi({
   images: ScanImage[];
   skippedBig: number;
 }): Promise<ReadCard[]> {
-  const gateway = createGateway({ apiKey });
   const slideBlock =
     pages.length > 1
       ? pages
@@ -321,10 +338,9 @@ async function cardsWithAi({
           .join("\n\n")
           .slice(0, 24_000)
       : rawText.slice(0, 24_000);
-  const imagesForModel = images.map((image) => ({
-    type: "image" as const,
-    image: new Uint8Array(image.bytes),
-    mediaType: image.mime || "image/jpeg",
+  const modelImages = images.map((image) => ({
+    bytes: new Uint8Array(image.bytes),
+    mime: image.mime,
   }));
   let reason: string | undefined;
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -332,39 +348,21 @@ async function cardsWithAi({
       imageCount: images.length,
       retryReason: reason,
     });
-    const content: Array<
-      | { type: "text"; text: string }
-      | { type: "image"; image: Uint8Array; mediaType?: string }
-    > = [
-      {
-        type: "text",
-        text: [
-          instructions,
-          `File name: ${fileName}`,
-          skippedBig > 0
-            ? `${skippedBig} photo${skippedBig === 1 ? "" : "s"} were too large to read. Use the ones attached.`
-            : "",
-          slideBlock
-            ? `Text from the file:\n${slideBlock}`
-            : images.length > 0
-              ? "No plain text was available. Read the recipe from the attached photos."
-              : "No text was extracted from this file.",
-        ]
-          .filter((line) => line.length > 0)
-          .join("\n\n"),
-      },
-      ...imagesForModel,
-    ];
-    const { text } = await generateText({
-      model: gateway(EXTRACT_MODEL),
-      messages: [{ role: "user", content }],
-      providerOptions: {
-        gateway: {
-          tags: ["feature:card-extract"],
-          models: [...EXTRACT_FALLBACKS],
-        },
-      },
-    });
+    const prompt = [
+      instructions,
+      `File name: ${fileName}`,
+      skippedBig > 0
+        ? `${skippedBig} photo${skippedBig === 1 ? "" : "s"} were too large to read. Use the ones attached.`
+        : "",
+      slideBlock
+        ? `Text from the file:\n${slideBlock}`
+        : images.length > 0
+          ? "No plain text was available. Read the recipe from the attached photos."
+          : "No text was extracted from this file.",
+    ]
+      .filter((line) => line.length > 0)
+      .join("\n\n");
+    const text = await askRecipeModel({ apiKey, prompt, images: modelImages });
     const verdict = validateRecipeJson(text);
     if (verdict.ok) return verdict.cards;
     reason = verdict.reason;
@@ -408,13 +406,12 @@ export const fromLink = action({
         signal: AbortSignal.timeout(8000),
       });
       if (!response.ok) {
-        return { cards: [], usedAi: false, rawText: "" };
+        return { cards: [], usedAi: false, rawText: "", readError: READ_MISSED_LINK };
       }
       html = (await response.text()).slice(0, 80_000);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error("Link extract fetch failed", message);
-      return { cards: [], usedAi: false, rawText: "" };
+      logReadFailure("Link extract fetch failed", error);
+      return { cards: [], usedAi: false, rawText: "", readError: READ_MISSED_LINK };
     }
 
     const fromPage = recipeFromHtml(html);
@@ -436,8 +433,7 @@ export const fromLink = action({
         });
         if (cards.length > 0) return { cards, usedAi: true, rawText };
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        console.error("Link extract failed", message);
+        logReadFailure("Link extract failed", error);
       }
     } else if (!apiKey) {
       console.warn("Link extract: AI_GATEWAY_API_KEY missing");
@@ -445,11 +441,22 @@ export const fromLink = action({
 
     if (rawText.length >= 40) {
       const local = readRecipeText(rawText, parsed.hostname);
-      if (local.ingredients.length + local.steps.length > 0) {
+      if (
+        local.ingredients.length > 0 &&
+        local.steps.length > 0 &&
+        local.steps.length <= 30 &&
+        local.ingredients.length <= 40
+      ) {
         return { cards: [local], usedAi: false, rawText };
       }
     }
-    return { cards: [], usedAi: false, rawText, skipped: !apiKey };
+    return {
+      cards: [],
+      usedAi: false,
+      rawText,
+      skipped: !apiKey,
+      readError: READ_MISSED_LINK,
+    };
   },
 });
 
@@ -482,8 +489,7 @@ export const fromText = action({
         });
         if (cards.length > 0) return { cards, usedAi: true, rawText };
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        console.error("Text extract failed", message);
+        logReadFailure("Text extract failed", error);
       }
     }
     return { cards: [readRecipeText(rawText)], usedAi: false, rawText };

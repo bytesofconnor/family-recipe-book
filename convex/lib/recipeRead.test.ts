@@ -56,13 +56,29 @@ describe("validateRecipeJson", () => {
     expect(verdict.cards[0]?.confidence.times).toBe("low");
   });
 
+  it("keeps a card when makes and notes are omitted and ingredients are one string", () => {
+    const verdict = validateRecipeJson(
+      JSON.stringify({
+        title: "Sunday stew",
+        ingredients: "1/2 cup flour\n2-3 tsp salt",
+        steps: ["Simmer until thick"],
+      }),
+    );
+    expect(verdict.ok).toBe(true);
+    if (!verdict.ok) return;
+    expect(verdict.cards[0]?.makes).toBe("");
+    expect(verdict.cards[0]?.notes).toBe("");
+    expect(verdict.cards[0]?.ingredients[0]).toBe("½ cup flour");
+    expect(verdict.cards[0]?.parts[1]?.quantity).toMatch(/2/);
+  });
+
   it("rejects a card whose ingredients are not a list, with a reason to retry", () => {
     const verdict = validateRecipeJson(
-      '{"cards":[{"title":"Soup","ingredients":"flour","steps":[]}]}',
+      '{"cards":[{"title":"Soup","ingredients":4,"steps":[]}]}',
     );
     expect(verdict.ok).toBe(false);
     if (verdict.ok) return;
-    expect(verdict.reason).toContain("ingredients must be an array");
+    expect(verdict.reason).toContain("ingredients must be a list");
   });
 
   it("rejects prose that is not JSON", () => {
@@ -117,5 +133,22 @@ describe("recipeFromHtml", () => {
       notes: "A short note.",
     });
     expect(card?.parts[1]).toMatchObject({ unit: "clove", item: "garlic" });
+  });
+
+  it("reads a recipe from an unquoted json-ld script", () => {
+    const html = `<script type=application/ld+json class=yoast-schema-graph>{"@graph":[{"@type":"WebPage"},{"@type":"https://schema.org/Recipe","name":"Weeknight beans","recipeIngredient":["1 cup beans"],"recipeInstructions":["Simmer."]}]}</script>`;
+    expect(recipeFromHtml(html)?.title).toBe("Weeknight beans");
+    expect(recipeFromHtml(html)?.steps).toEqual(["Simmer."]);
+  });
+});
+
+describe("readRecipeText page chrome", () => {
+  it("stops before a related list so the page does not become the method", () => {
+    const extra = Array.from({ length: 40 }, (_, index) => `Other stew ${index}`).join("\n");
+    const card = readRecipeText(
+      `Sunday stew\nIngredients\n1 cup flour\nSteps\n1. Simmer.\nRelated recipes\n${extra}`,
+    );
+    expect(card.steps).toEqual(["Simmer."]);
+    expect(card.ingredients).toEqual(["1 cup flour"]);
   });
 });

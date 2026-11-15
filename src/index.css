@@ -4800,7 +4800,8 @@ summary::-webkit-details-marker {
 
   body:has(.write-desk-leaf) .write-desk input,
   body:has(.write-desk-leaf) .write-desk textarea,
-  body:has(.write-desk-leaf) .write-desk select {
+  body:has(.write-desk-leaf) .write-desk select,
+  body:has(.write-desk-leaf) .write-desk button {
     scroll-margin-top: 4.5rem;
     scroll-margin-bottom: 6.5rem;
   }

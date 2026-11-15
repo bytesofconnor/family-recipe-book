@@ -11,6 +11,13 @@ import {
   FIXTURE_TEASER,
 } from "@/test/a11yFixtureData";
 import { isA11ySignedIn } from "@/test/a11yFixtureMode";
+import {
+  READ_BAD_TYPE,
+  READ_GATEWAY,
+  READ_MISSED,
+  READ_TIMEOUT,
+  READ_TOO_BIG,
+} from "../../convex/lib/readFailure";
 
 type QueryArgs = Record<string, unknown> | "skip" | undefined;
 type PublishedBake = typeof FIXTURE_PUBLISHED_BAKE;
@@ -192,6 +199,67 @@ function extractFromUpload(args: unknown) {
   const imageCount = Array.isArray(images) ? images.length : 0;
   if (lower.includes("scan-throw")) {
     throw new Error("The scan didn't finish.");
+  }
+  if (lower.includes("scan-timeout")) {
+    return { cards: [], usedAi: false, rawText: "", readError: READ_TIMEOUT };
+  }
+  if (lower.includes("scan-badjson")) {
+    return { cards: [], usedAi: false, rawText: "", readError: READ_GATEWAY };
+  }
+  if (lower.includes("scan-huge") && lower.endsWith(".heic")) {
+    return { cards: [], usedAi: false, rawText: "", readError: READ_BAD_TYPE };
+  }
+  if (lower.includes("scan-huge") && lower.endsWith(".png")) {
+    return { cards: [], usedAi: false, rawText: "", readError: READ_TOO_BIG };
+  }
+  if (lower.includes("not-a-recipe")) {
+    return { cards: [], usedAi: false, rawText: "", readError: READ_MISSED };
+  }
+  if (lower.includes("scan-slow")) {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        resolve({
+          cards: [
+            {
+              title: "Sunday stew",
+              makes: "6 servings",
+              prepTime: "15 min",
+              cookTime: "40 min",
+              ingredients: ["½ cup flour", "salt"],
+              parts: [
+                {
+                  quantity: "½",
+                  unit: "cup",
+                  item: "flour",
+                  line: "½ cup flour",
+                  confidence: "low" as const,
+                },
+                {
+                  quantity: "",
+                  unit: "",
+                  item: "salt",
+                  line: "salt",
+                  confidence: "high" as const,
+                },
+              ],
+              steps: ["Simmer until thick"],
+              stepConfidence: ["high" as const],
+              notes: "",
+              sourceKind: "family" as const,
+              sourceTitle: "",
+              confidence: {
+                title: "high" as const,
+                makes: "high" as const,
+                times: "low" as const,
+                notes: "high" as const,
+              },
+            },
+          ],
+          usedAi: true,
+          rawText: "Sunday stew\n1/2 cup flour\nsalt\nSimmer until thick",
+        });
+      }, 700);
+    });
   }
   if (lower.includes("scan-combine") || (imageCount > 1 && lower.includes("scan"))) {
     return {

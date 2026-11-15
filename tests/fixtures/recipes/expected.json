@@ -1,0 +1,246 @@
+{
+  "typed-card.png": {
+    "title": "Sunday stew",
+    "makes": "6",
+    "prep": "15",
+    "cook": "40",
+    "ingredients": [
+      {
+        "quantity": "1/2",
+        "unit": "cup",
+        "item": "flour"
+      },
+      {
+        "quantity": "2",
+        "unit": "",
+        "item": "onions"
+      },
+      {
+        "quantity": "1",
+        "unit": "lb",
+        "item": "beef"
+      },
+      {
+        "quantity": "",
+        "unit": "",
+        "item": "salt"
+      }
+    ],
+    "steps": 2,
+    "notes": "next day"
+  },
+  "handwritten.png": {
+    "title": "Weeknight beans",
+    "makes": "4",
+    "prep": "10",
+    "cook": "25",
+    "ingredients": [
+      {
+        "quantity": "2",
+        "unit": "cup",
+        "item": "beans"
+      },
+      {
+        "quantity": "1",
+        "unit": "",
+        "item": "onion"
+      },
+      {
+        "quantity": "3",
+        "unit": "clove",
+        "item": "garlic"
+      },
+      {
+        "quantity": "1",
+        "unit": "tsp",
+        "item": "chili"
+      }
+    ],
+    "steps": 2,
+    "notes": "cold"
+  },
+  "two-column.png": {
+    "title": "Apple skillet cake",
+    "makes": "8",
+    "prep": "20",
+    "cook": "35",
+    "ingredients": [
+      {
+        "quantity": "1 1/2",
+        "unit": "cup",
+        "item": "flour"
+      },
+      {
+        "quantity": "1/2",
+        "unit": "cup",
+        "item": "sugar"
+      },
+      {
+        "quantity": "2",
+        "unit": "",
+        "item": "apples"
+      },
+      {
+        "quantity": "1",
+        "unit": "tsp",
+        "item": "cinnamon"
+      },
+      {
+        "quantity": "1/2",
+        "unit": "cup",
+        "item": "butter"
+      }
+    ],
+    "steps": 3,
+    "notes": "warm"
+  },
+  "screenshot.png": {
+    "title": "Lemon rice",
+    "makes": "4",
+    "prep": "10",
+    "cook": "20",
+    "ingredients": [
+      {
+        "quantity": "1",
+        "unit": "cup",
+        "item": "rice"
+      },
+      {
+        "quantity": "2",
+        "unit": "cup",
+        "item": "water"
+      },
+      {
+        "quantity": "1",
+        "unit": "",
+        "item": "lemon"
+      },
+      {
+        "quantity": "2",
+        "unit": "tbsp",
+        "item": "butter"
+      }
+    ],
+    "steps": 2,
+    "notes": "herbs"
+  },
+  "card-pair": {
+    "images": [
+      "card-front.png",
+      "card-back.png"
+    ],
+    "title": "Tomato soup",
+    "makes": "4",
+    "prep": "10",
+    "cook": "30",
+    "ingredients": [
+      {
+        "quantity": "2",
+        "unit": "lb",
+        "item": "tomatoes"
+      },
+      {
+        "quantity": "1",
+        "unit": "",
+        "item": "onion"
+      },
+      {
+        "quantity": "2",
+        "unit": "cup",
+        "item": "stock"
+      },
+      {
+        "quantity": "",
+        "unit": "",
+        "item": "salt"
+      }
+    ],
+    "steps": 3,
+    "notes": "cream"
+  },
+  "rotated.png": {
+    "title": "Ginger tea",
+    "makes": "2",
+    "prep": "5",
+    "cook": "10",
+    "ingredients": [
+      {
+        "quantity": "2",
+        "unit": "inch",
+        "item": "ginger"
+      },
+      {
+        "quantity": "2",
+        "unit": "cup",
+        "item": "water"
+      },
+      {
+        "quantity": "1",
+        "unit": "tbsp",
+        "item": "honey"
+      }
+    ],
+    "steps": 2,
+    "notes": "grate"
+  },
+  "low-light.png": {
+    "title": "Oat pan bread",
+    "makes": "6",
+    "prep": "15",
+    "cook": "30",
+    "ingredients": [
+      {
+        "quantity": "2",
+        "unit": "cup",
+        "item": "oats"
+      },
+      {
+        "quantity": "1",
+        "unit": "cup",
+        "item": "flour"
+      },
+      {
+        "quantity": "1",
+        "unit": "tsp",
+        "item": "salt"
+      },
+      {
+        "quantity": "1 1/2",
+        "unit": "cup",
+        "item": "water"
+      }
+    ],
+    "steps": 2,
+    "notes": "morning"
+  },
+  "fractions.png": {
+    "title": "Honey custard",
+    "makes": "4",
+    "prep": "15",
+    "cook": "35",
+    "ingredients": [
+      {
+        "quantity": "1/2",
+        "unit": "cup",
+        "item": "honey"
+      },
+      {
+        "quantity": "1 1/2",
+        "unit": "cup",
+        "item": "milk"
+      },
+      {
+        "quantity": "2-3",
+        "unit": "",
+        "item": "eggs"
+      },
+      {
+        "quantity": "1/4",
+        "unit": "tsp",
+        "item": "salt"
+      }
+    ],
+    "steps": 3,
+    "notes": "cools"
+  }
+}

@@ -175,7 +175,7 @@ test.describe("photo intake", () => {
     await expect(
       page.getByText("Couldn't read words on this. You can still save it."),
     ).toBeVisible();
-    await expect(page.getByRole("img", { name: "counter" })).toBeVisible();
+    await expect(page.getByRole("img", { name: "Recipe photo" })).toBeVisible();
   });
 
   test("mobile: a failed upload says so on the choose screen", async ({
@@ -198,6 +198,49 @@ test.describe("photo intake", () => {
       page.getByRole("button", { name: "Put it in the book" }),
     ).toHaveCount(0);
     await expectNoSeriousAxe(page);
+  });
+
+  test("desktop: a photo goes from reading to review to save", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await stubUpload(page, 200);
+    await openDesk(page);
+    await page.getByRole("button", { name: "Take or choose photos" }).click();
+    const reading = page.getByText("Reading the photo…");
+    await page.getByLabel("Recipe photos").setInputFiles({
+      name: "scan-slow.jpg",
+      mimeType: "image/jpeg",
+      buffer: JPEG,
+    });
+    await expect(reading).toBeVisible();
+    await expect(page.getByLabel("What do you call it?")).toHaveValue(
+      "Sunday stew",
+    );
+    await expect(page.getByText("Check this").first()).toBeVisible();
+    await page.getByRole("button", { name: "Put it in the book" }).click();
+    await expect(page).toHaveURL(/\/bakes\/sunday-stew$/);
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Sunday stew" }),
+    ).toBeVisible();
+    await expect(page.getByText("½ cup flour")).toBeVisible();
+  });
+
+  test("mobile: a dropped upload stays on add and explains itself", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.route("https://example.test/**", (route) => route.abort());
+    await openDesk(page);
+    await page.getByRole("button", { name: "Take or choose photos" }).click();
+    await page.getByLabel("Recipe photos").setInputFiles(PHOTOS[0]!);
+    await expect(page.getByRole("alert")).toHaveText(
+      "Couldn't upload that. Try again.",
+    );
+    await expect(
+      page.getByText("Put it in the book however you already have it"),
+    ).toBeVisible();
+    await expect(page.getByLabel("What do you call it?")).toHaveCount(0);
   });
 
   test("mobile: a PDF still opens the recipe card", async ({ page }) => {
