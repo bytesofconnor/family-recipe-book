@@ -4795,6 +4795,13 @@ summary::-webkit-details-marker {
   border-color: var(--color-cinnamon-deep);
 }
 
+@media (max-width: 639px) {
+  .write-desk-photo-empty {
+    aspect-ratio: auto;
+    min-height: 4.5rem;
+  }
+}
+
 .write-desk-cover-pick {
   margin: 0;
   border: 0;
