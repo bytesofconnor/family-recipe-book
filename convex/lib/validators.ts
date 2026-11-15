@@ -30,6 +30,8 @@ export const bakeValidator = v.object({
   kind: v.optional(kindValidator),
   method: v.optional(v.string()),
   makes: v.optional(v.string()),
+  prepTime: v.optional(v.string()),
+  cookTime: v.optional(v.string()),
   ingredients: v.optional(v.array(v.string())),
   steps: v.optional(v.array(v.string())),
   ingredientSearch: v.optional(v.string()),

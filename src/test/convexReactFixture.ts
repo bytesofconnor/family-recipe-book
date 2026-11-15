@@ -67,6 +67,8 @@ function rememberSave(args: unknown) {
     bakerName: String(fields.bakerName ?? FIXTURE_PUBLISHED_BAKE.bakerName),
     kind: String(fields.kind ?? "other"),
     makes: String(fields.makes ?? ""),
+    prepTime: String(fields.prepTime ?? ""),
+    cookTime: String(fields.cookTime ?? ""),
     ingredients,
     steps,
     ingredientSearch: ingredients.join(" "),
@@ -198,6 +200,48 @@ function extractFromUpload(args: unknown) {
       rawText: "",
     };
   }
+  if (lower.includes("scan-structured")) {
+    return {
+      cards: [
+        {
+          title: "Sunday stew",
+          makes: "6 servings",
+          prepTime: "15 min",
+          cookTime: "40 min",
+          ingredients: ["½ cup flour", "salt"],
+          parts: [
+            {
+              quantity: "½",
+              unit: "cup",
+              item: "flour",
+              line: "½ cup flour",
+              confidence: "high" as const,
+            },
+            {
+              quantity: "",
+              unit: "",
+              item: "salt",
+              line: "salt",
+              confidence: "low" as const,
+            },
+          ],
+          steps: ["Simmer"],
+          stepConfidence: ["high" as const],
+          notes: "Better the next day",
+          sourceKind: "original" as const,
+          sourceTitle: "",
+          confidence: {
+            title: "low" as const,
+            makes: "high" as const,
+            times: "high" as const,
+            notes: "high" as const,
+          },
+        },
+      ],
+      usedAi: true,
+      rawText: "Sunday stew\n1/2 cup flour\nsalt\nSimmer",
+    };
+  }
   if (lower.includes("scan-full")) {
     return {
       cards: [
@@ -263,6 +307,45 @@ function actionValue(ref: unknown, args: unknown) {
   }
   if (name === "extractCard:fromLink") {
     return linkScan(args);
+  }
+  if (name === "extractCard:fromText") {
+    const text = String(record(args).text ?? "");
+    if (text.toLowerCase().includes("stew")) {
+      return {
+        cards: [
+          {
+            title: "Sunday stew",
+            makes: "6 servings",
+            prepTime: "15 min",
+            cookTime: "",
+            ingredients: ["½ cup flour"],
+            parts: [
+              {
+                quantity: "½",
+                unit: "cup",
+                item: "flour",
+                line: "½ cup flour",
+                confidence: "high" as const,
+              },
+            ],
+            steps: ["Simmer"],
+            stepConfidence: ["high" as const],
+            notes: "",
+            sourceKind: "original" as const,
+            sourceTitle: "",
+            confidence: {
+              title: "high" as const,
+              makes: "high" as const,
+              times: "low" as const,
+              notes: "low" as const,
+            },
+          },
+        ],
+        usedAi: false,
+        rawText: text,
+      };
+    }
+    return { cards: [], usedAi: false, rawText: text, skipped: true };
   }
   return { hostOk: false, title: null, cards: [] };
 }

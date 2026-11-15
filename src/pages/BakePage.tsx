@@ -195,6 +195,8 @@ export function BakePage() {
         <KitchenMethod
           key={bake._id}
           makes={bake.makes}
+          prepTime={bake.prepTime}
+          cookTime={bake.cookTime}
           ingredients={bake.ingredients}
           steps={bake.steps}
           method={bake.method}

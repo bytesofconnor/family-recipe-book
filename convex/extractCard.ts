@@ -8,21 +8,45 @@ import { action, env } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import {
-  cardFromText,
-  cardsFromPages,
-  parseCardsJson,
-  type ExtractedCard,
-} from "./lib/cardFromText";
+  emptyReadCard,
+  extractionInstructions,
+  plainTextFromHtml,
+  readRecipePages,
+  readRecipeText,
+  recipeFromHtml,
+  validateRecipeJson,
+  type ReadCard,
+} from "./lib/recipeRead";
 import { kindFromUrl, sourceKindValidator } from "./lib/sources";
+
+const confidence = v.union(v.literal("high"), v.literal("low"));
 
 const cardFields = {
   title: v.string(),
   makes: v.string(),
+  prepTime: v.string(),
+  cookTime: v.string(),
   ingredients: v.array(v.string()),
+  parts: v.array(
+    v.object({
+      quantity: v.string(),
+      unit: v.string(),
+      item: v.string(),
+      line: v.string(),
+      confidence,
+    }),
+  ),
   steps: v.array(v.string()),
+  stepConfidence: v.array(confidence),
   notes: v.optional(v.string()),
   sourceKind: sourceKindValidator,
   sourceTitle: v.string(),
+  confidence: v.object({
+    title: confidence,
+    makes: confidence,
+    times: confidence,
+    notes: confidence,
+  }),
 };
 
 const extractReturn = v.object({
@@ -62,7 +86,7 @@ export const fromUpload = action({
     ctx,
     args,
   ): Promise<{
-    cards: ExtractedCard[];
+    cards: ReadCard[];
     usedAi: boolean;
     rawText: string;
     skipped?: boolean;
@@ -144,34 +168,22 @@ export const fromUpload = action({
 
     if (onlyImages) {
       return {
-        cards: [emptyCard(args.fileName)],
+        cards: [emptyReadCard(args.fileName)],
         usedAi: false,
         rawText,
         skipped: !apiKey,
       };
     }
     if (rawText.trim().length > 0) {
-      const fallback =
-        pages.length > 1
-          ? cardsFromPages(pages, args.fileName)
-          : [cardFromText(rawText, args.fileName)];
-      return { cards: fallback, usedAi: false, rawText };
+      return {
+        cards: readRecipePages(pages.length > 0 ? pages : [rawText], args.fileName),
+        usedAi: false,
+        rawText,
+      };
     }
-    return { cards: [emptyCard(args.fileName)], usedAi: false, rawText };
+    return { cards: [emptyReadCard(args.fileName)], usedAi: false, rawText };
   },
 });
-
-function emptyCard(fileName: string): ExtractedCard {
-  return {
-    title: fileName.replace(/\.[a-z0-9]+$/i, "").replace(/[-_]+/g, " ").trim(),
-    makes: "",
-    ingredients: [],
-    steps: [],
-    notes: "",
-    sourceKind: "original",
-    sourceTitle: "",
-  };
-}
 
 type ScanFile = {
   storageId: Id<"_storage">;
@@ -300,7 +312,7 @@ async function cardsWithAi({
   fileName: string;
   images: ScanImage[];
   skippedBig: number;
-}): Promise<ExtractedCard[]> {
+}): Promise<ReadCard[]> {
   const gateway = createGateway({ apiKey });
   const slideBlock =
     pages.length > 1
@@ -309,76 +321,56 @@ async function cardsWithAi({
           .join("\n\n")
           .slice(0, 24_000)
       : rawText.slice(0, 24_000);
-  const several = images.length > 1;
-  const instructions = [
-    "Extract home-cook recipe cards from this private family recipe book file.",
-    several
-      ? "Several photos were sent together. Treat them as one recipe and combine the title, ingredients, steps, and notes across the photos, unless you clearly see separate recipes."
-      : images.length === 1
-        ? "This is a photo or scan of a recipe. Read the handwriting or print. Pull the title, yield, ingredients, steps, and any short note written on the card."
-        : "A PDF, PowerPoint, or text packet may have many recipes — one card per recipe, not one mashed card.",
-    "Skip title slides, indexes, and pages with no recipe words.",
-    "Return ONLY valid JSON (no markdown fences): {\"cards\":[{\"title\":\"\",\"makes\":\"\",\"ingredients\":[\"\"],\"steps\":[\"\"],\"notes\":\"\",\"sourceKind\":\"original\",\"sourceTitle\":\"\"}]}",
-    "Maximum 12 cards. ingredients and steps are short lines. notes is one short aside, or empty.",
-    "sourceKind must be sally, original, family, friend, book, tiktok, or pinterest.",
-    "Do not invent ingredients, steps, or notes that are not visible.",
-    "If it is a handwritten or typed family card, sourceKind is family. If a friend sent it, friend. If it is from another cookbook, book. TikTok or Pinterest if that is clear.",
-    "Otherwise original. Do not copy a long article. Short lines only.",
-  ].join(" ");
-
-  const content: Array<
-    | { type: "text"; text: string }
-    | { type: "image"; image: Uint8Array; mediaType?: string }
-  > = [
-    {
-      type: "text",
-      text: [
-        instructions,
-        `File name: ${fileName}`,
-        skippedBig > 0
-          ? `${skippedBig} photo${skippedBig === 1 ? "" : "s"} were too large to read. Use the ones attached.`
-          : "",
-        slideBlock
-          ? `Text from the file:\n${slideBlock}`
-          : images.length > 0
-            ? "No plain text was available. Read the recipe from the attached photos."
-            : "No text was extracted from this file.",
-      ]
-        .filter((line) => line.length > 0)
-        .join("\n\n"),
-    },
-  ];
-  for (const image of images) {
-    content.push({
-      type: "image",
-      image: new Uint8Array(image.bytes),
-      mediaType: image.mime || "image/jpeg",
+  const imagesForModel = images.map((image) => ({
+    type: "image" as const,
+    image: new Uint8Array(image.bytes),
+    mediaType: image.mime || "image/jpeg",
+  }));
+  let reason: string | undefined;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const instructions = extractionInstructions({
+      imageCount: images.length,
+      retryReason: reason,
     });
-  }
-
-  const { text } = await generateText({
-    model: gateway(EXTRACT_MODEL),
-    messages: [{ role: "user", content }],
-    providerOptions: {
-      gateway: {
-        tags: ["feature:card-extract"],
-        models: [...EXTRACT_FALLBACKS],
+    const content: Array<
+      | { type: "text"; text: string }
+      | { type: "image"; image: Uint8Array; mediaType?: string }
+    > = [
+      {
+        type: "text",
+        text: [
+          instructions,
+          `File name: ${fileName}`,
+          skippedBig > 0
+            ? `${skippedBig} photo${skippedBig === 1 ? "" : "s"} were too large to read. Use the ones attached.`
+            : "",
+          slideBlock
+            ? `Text from the file:\n${slideBlock}`
+            : images.length > 0
+              ? "No plain text was available. Read the recipe from the attached photos."
+              : "No text was extracted from this file.",
+        ]
+          .filter((line) => line.length > 0)
+          .join("\n\n"),
       },
-    },
-  });
-
-  return parseCardsJson(text);
-}
-
-function htmlToText(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&nbsp;/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+      ...imagesForModel,
+    ];
+    const { text } = await generateText({
+      model: gateway(EXTRACT_MODEL),
+      messages: [{ role: "user", content }],
+      providerOptions: {
+        gateway: {
+          tags: ["feature:card-extract"],
+          models: [...EXTRACT_FALLBACKS],
+        },
+      },
+    });
+    const verdict = validateRecipeJson(text);
+    if (verdict.ok) return verdict.cards;
+    reason = verdict.reason;
+    console.warn("Card extract rejected", reason);
+  }
+  throw new Error(reason ?? "The recipe didn't come back in a usable shape.");
 }
 
 export const fromLink = action({
@@ -408,13 +400,7 @@ export const fromLink = action({
       return { cards: [], usedAi: false, rawText: "", skipped: true };
     }
 
-    const apiKey = env.AI_GATEWAY_API_KEY?.trim();
-    if (!apiKey) {
-      console.warn("Link extract: AI_GATEWAY_API_KEY missing");
-      return { cards: [], usedAi: false, rawText: "", skipped: true };
-    }
-
-    let rawText: string;
+    let html: string;
     try {
       const response = await fetch(parsed.toString(), {
         redirect: "follow",
@@ -424,32 +410,82 @@ export const fromLink = action({
       if (!response.ok) {
         return { cards: [], usedAi: false, rawText: "" };
       }
-      const html = (await response.text()).slice(0, 60_000);
-      rawText = htmlToText(html).slice(0, 20_000);
+      html = (await response.text()).slice(0, 80_000);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error("Link extract fetch failed", message);
       return { cards: [], usedAi: false, rawText: "" };
     }
 
-    if (rawText.length < 40) {
-      return { cards: [], usedAi: false, rawText };
+    const fromPage = recipeFromHtml(html);
+    const rawText = plainTextFromHtml(html).slice(0, 20_000);
+    if (fromPage && (fromPage.ingredients.length > 0 || fromPage.steps.length > 0)) {
+      return { cards: [fromPage], usedAi: false, rawText };
     }
 
-    try {
-      const cards = await cardsWithAi({
-        apiKey,
-        pages: [rawText],
-        rawText,
-        fileName: parsed.hostname,
-        images: [],
-        skippedBig: 0,
-      });
-      return { cards, usedAi: cards.length > 0, rawText };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error("Link extract failed", message);
-      return { cards: [], usedAi: false, rawText };
+    const apiKey = env.AI_GATEWAY_API_KEY?.trim();
+    if (apiKey && rawText.length >= 40) {
+      try {
+        const cards = await cardsWithAi({
+          apiKey,
+          pages: [rawText],
+          rawText,
+          fileName: parsed.hostname,
+          images: [],
+          skippedBig: 0,
+        });
+        if (cards.length > 0) return { cards, usedAi: true, rawText };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error("Link extract failed", message);
+      }
+    } else if (!apiKey) {
+      console.warn("Link extract: AI_GATEWAY_API_KEY missing");
     }
+
+    if (rawText.length >= 40) {
+      const local = readRecipeText(rawText, parsed.hostname);
+      if (local.ingredients.length + local.steps.length > 0) {
+        return { cards: [local], usedAi: false, rawText };
+      }
+    }
+    return { cards: [], usedAi: false, rawText, skipped: !apiKey };
+  },
+});
+
+export const fromText = action({
+  args: {
+    writerToken: v.optional(v.string()),
+    kitchenId: v.optional(v.id("kitchens")),
+    text: v.string(),
+  },
+  returns: extractReturn,
+  handler: async (ctx, args) => {
+    await ctx.runQuery(internal.sallyCredit.assertWriter, {
+      writerToken: args.writerToken,
+      kitchenId: args.kitchenId,
+    });
+    const rawText = args.text.replace(/\r\n/g, "\n").slice(0, 20_000);
+    if (rawText.trim().length < 8) {
+      return { cards: [], usedAi: false, rawText, skipped: true };
+    }
+    const apiKey = env.AI_GATEWAY_API_KEY?.trim();
+    if (apiKey) {
+      try {
+        const cards = await cardsWithAi({
+          apiKey,
+          pages: [rawText],
+          rawText,
+          fileName: "pasted recipe",
+          images: [],
+          skippedBig: 0,
+        });
+        if (cards.length > 0) return { cards, usedAi: true, rawText };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error("Text extract failed", message);
+      }
+    }
+    return { cards: [readRecipeText(rawText)], usedAi: false, rawText };
   },
 });

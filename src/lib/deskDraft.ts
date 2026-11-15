@@ -1,8 +1,9 @@
 import type { SourceKind } from "@/lib/sources";
+import type { IngredientPart } from "../../convex/lib/ingredientLine";
 
 export const DESK_DRAFT_KEY = "write-desk-draft";
 
-const INTAKES = ["photo", "file", "link", "type"] as const;
+const INTAKES = ["photo", "file", "link", "paste", "type"] as const;
 const KINDS = [
   "original",
   "family",
@@ -31,11 +32,14 @@ export type DeskPileCard = {
   sourceTitle: string;
   notes: string;
   keep: boolean;
+  prepTime?: string;
+  cookTime?: string;
+  parts?: IngredientPart[];
 };
 
 export type DeskDraft = {
   version: 1;
-  screen: "card" | "tray";
+  screen: "card" | "tray" | "paste";
   intake: DeskIntake;
   sourceKind: SourceKind;
   title: string;
@@ -49,6 +53,10 @@ export type DeskDraft = {
   makes: string;
   ingredients: string;
   steps: string;
+  prepTime?: string;
+  cookTime?: string;
+  rawText?: string;
+  parts?: IngredientPart[];
   pile: DeskPileCard[];
   editingIndex: number | null;
   hadPhoto: boolean;
@@ -86,6 +94,19 @@ function isChange(value: unknown): value is DeskChange {
   );
 }
 
+function isPartList(value: unknown): value is IngredientPart[] {
+  if (!Array.isArray(value)) return false;
+  return value.every(
+    (part) =>
+      isRecord(part) &&
+      isString(part.quantity) &&
+      isString(part.unit) &&
+      isString(part.item) &&
+      isString(part.line) &&
+      (part.confidence === "high" || part.confidence === "low"),
+  );
+}
+
 function isCard(value: unknown): value is DeskPileCard {
   return (
     isRecord(value) &&
@@ -107,6 +128,10 @@ export function deskDraftIsWorthKeeping(draft: DeskDraft): boolean {
     draft.ingredients.trim().length > 0 ||
     draft.steps.trim().length > 0 ||
     draft.makes.trim().length > 0 ||
+    (draft.prepTime ?? "").trim().length > 0 ||
+    (draft.cookTime ?? "").trim().length > 0 ||
+    (draft.rawText ?? "").trim().length > 0 ||
+    (draft.parts?.length ?? 0) > 0 ||
     draft.sourceUrl.trim().length > 0 ||
     draft.sourceTitle.trim().length > 0 ||
     draft.changes.some((row) => row.change.trim().length > 0) ||
@@ -128,7 +153,7 @@ export function parseDeskDraft(raw: string | null): DeskDraft | null {
   if (!isRecord(value) || value.version !== 1) {
     return null;
   }
-  if (value.screen !== "card" && value.screen !== "tray") {
+  if (value.screen !== "card" && value.screen !== "tray" && value.screen !== "paste") {
     return null;
   }
   if (!isIntake(value.intake) || !isKind(value.sourceKind)) {
@@ -172,6 +197,10 @@ export function parseDeskDraft(raw: string | null): DeskDraft | null {
   if (typeof value.hadPhoto !== "boolean") {
     return null;
   }
+  const prepTime = isString(value.prepTime) ? value.prepTime : "";
+  const cookTime = isString(value.cookTime) ? value.cookTime : "";
+  const rawText = isString(value.rawText) ? value.rawText : "";
+  const parts = isPartList(value.parts) ? value.parts : undefined;
   const draft: DeskDraft = {
     version: 1,
     screen: value.screen,
@@ -188,6 +217,10 @@ export function parseDeskDraft(raw: string | null): DeskDraft | null {
     makes,
     ingredients,
     steps,
+    prepTime,
+    cookTime,
+    rawText,
+    parts,
     pile: value.pile,
     editingIndex: value.editingIndex,
     hadPhoto: value.hadPhoto,

@@ -5,6 +5,7 @@ import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { Link } from "react-router";
 import { BookConfirm } from "@/components/BookConfirm";
+import { IngredientParts } from "@/components/IngredientParts";
 import { PhotoManager } from "@/components/PhotoManager";
 import { RecipeLines } from "@/components/RecipeLines";
 import { Input } from "@/components/ui/input";
@@ -30,6 +31,11 @@ import {
   sourceNote,
   type SourceKind,
 } from "@/lib/sources";
+import type { IngredientPart } from "../../convex/lib/ingredientLine";
+import {
+  readRecipeText,
+  type FieldMarks,
+} from "../../convex/lib/recipeRead";
 import { kindFromUrl } from "../../convex/lib/sources";
 import { useToast } from "@/lib/toast";
 import { photosFromPicker, uploadContentType } from "@/lib/photoFiles";
@@ -56,7 +62,7 @@ function messageFrom(caught: unknown, fallback: string): string {
   return fallback;
 }
 
-type ScanKind = "photo" | "file" | "link";
+type ScanKind = "photo" | "file" | "link" | "paste";
 
 type ReadFields = {
   title: boolean;
@@ -106,13 +112,18 @@ function scanSummary(input: {
         ? "the link"
         : input.kind === "photo"
           ? "the photo"
-          : "the file";
+          : input.kind === "paste"
+            ? "what you pasted"
+            : "the file";
     return `Filled in from ${where}. Change anything that's wrong.`;
   }
   if (input.titleOnly || input.partial) {
     return "Filled in what I could read. Blank lines are fine.";
   }
   if (input.hasWords) {
+    if (input.kind === "paste") {
+      return "Sorted what you pasted. Change anything that's wrong.";
+    }
     return "Pulled the words off the file. Check them.";
   }
   if (input.kind === "link") {
@@ -126,7 +137,13 @@ function ReadFromLine({ from, show }: { from: ScanKind | null; show: boolean }) 
     return null;
   }
   const where =
-    from === "photo" ? "the photo" : from === "link" ? "the link" : "the file";
+    from === "photo"
+      ? "the photo"
+      : from === "link"
+        ? "the link"
+        : from === "paste"
+          ? "what you pasted"
+          : "the file";
   return (
     <p className="mt-1 text-[15px] leading-6 text-ink-soft">
       Read from {where}. Change it if it&apos;s wrong.
@@ -136,8 +153,8 @@ function ReadFromLine({ from, show }: { from: ScanKind | null; show: boolean }) 
 
 type ChangeDraft = ChangeRow & { id: string };
 
-type Screen = "choose" | "tray" | "card";
-type Intake = "photo" | "file" | "link" | "type";
+type Screen = "choose" | "tray" | "card" | "paste";
+type Intake = "photo" | "file" | "link" | "paste" | "type";
 
 type DraftCard = {
   title: string;
@@ -148,6 +165,10 @@ type DraftCard = {
   sourceTitle: string;
   notes: string;
   keep: boolean;
+  prepTime?: string;
+  cookTime?: string;
+  parts?: IngredientPart[];
+  marks?: FieldMarks;
 };
 
 type IntakeShot = {
@@ -245,6 +266,7 @@ export function WriteDesk({
   const lookupCredit = useAction(api.sallyCredit.lookupCredit);
   const extractCard = useAction(api.extractCard.fromUpload);
   const extractFromLink = useAction(api.extractCard.fromLink);
+  const extractFromText = useAction(api.extractCard.fromText);
   const mine = useQuery(
     api.bakes.listMine,
     token || kitchenId ? writeAccess : "skip",
@@ -302,7 +324,13 @@ export function WriteDesk({
   const [changes, setChanges] = useState<ChangeDraft[]>(seed?.changes ?? []);
   const changeSerial = useRef(changeSerialFrom(seed?.changes ?? []));
   const [makes, setMakes] = useState(seed?.makes ?? "");
+  const [prepTime, setPrepTime] = useState(seed?.prepTime ?? "");
+  const [cookTime, setCookTime] = useState(seed?.cookTime ?? "");
   const [ingredients, setIngredients] = useState(seed?.ingredients ?? "");
+  const [parts, setParts] = useState<IngredientPart[] | null>(seed?.parts ?? null);
+  const [marks, setMarks] = useState<FieldMarks | null>(null);
+  const [rawText, setRawText] = useState(seed?.rawText ?? "");
+  const [showRaw, setShowRaw] = useState(false);
   const [steps, setSteps] = useState(seed?.steps ?? "");
   const [originStorageId, setOriginStorageId] = useState<Id<"_storage"> | null>(
     null,
@@ -402,6 +430,10 @@ export function WriteDesk({
       makes,
       ingredients,
       steps,
+      prepTime,
+      cookTime,
+      rawText,
+      parts: parts ?? undefined,
       pile,
       editingIndex,
       hadPhoto:
@@ -426,6 +458,10 @@ export function WriteDesk({
     makes,
     ingredients,
     steps,
+    prepTime,
+    cookTime,
+    rawText,
+    parts,
     pile,
     editingIndex,
     photoFile,
@@ -493,7 +529,13 @@ export function WriteDesk({
       }),
     );
     setMakes(editBake.makes ?? "");
+    setPrepTime(editBake.prepTime ?? "");
+    setCookTime(editBake.cookTime ?? "");
     setIngredients(editBake.ingredients.join("\n"));
+    setParts(null);
+    setMarks(null);
+    setRawText("");
+    setShowRaw(false);
     setSteps(editBake.steps.join("\n"));
     setOriginStorageId(editBake.originStorageId ?? null);
     setOriginIsImage(Boolean(editBake.photoUrl));
@@ -632,6 +674,12 @@ export function WriteDesk({
           if (snap.makes.trim().length === 0 && draft.makes.trim().length > 0) {
             setMakes(draft.makes);
           }
+          if (draft.prepTime) setPrepTime(draft.prepTime);
+          if (draft.cookTime) setCookTime(draft.cookTime);
+          if (draft.parts && draft.parts.length > 0) {
+            setParts(draft.parts);
+            setMarks(draft.marks ?? null);
+          }
           if (
             snap.ingredients.trim().length === 0 &&
             draft.ingredients.trim().length > 0
@@ -648,6 +696,7 @@ export function WriteDesk({
             filled.story = true;
           }
           const hasWords = filled.ingredients || filled.steps || filled.story;
+          setRawText(result.rawText);
           setReadFrom(filled.title || hasWords ? "link" : null);
           setReadFields(filled);
           setExtractNote(
@@ -679,7 +728,11 @@ export function WriteDesk({
   function applyCardToForm(card: DraftCard) {
     setTitle(card.title);
     setMakes(card.makes);
+    setPrepTime(card.prepTime ?? "");
+    setCookTime(card.cookTime ?? "");
     setIngredients(card.ingredients);
+    setParts(card.parts && card.parts.length > 0 ? card.parts : null);
+    setMarks(card.marks ?? null);
     setSteps(card.steps);
     setStory(card.notes);
     setSourceKind(card.sourceKind);
@@ -696,6 +749,10 @@ export function WriteDesk({
       sourceKind,
       sourceTitle,
       keep,
+      prepTime,
+      cookTime,
+      parts: parts ?? undefined,
+      marks: marks ?? undefined,
     };
   }
 
@@ -708,17 +765,28 @@ export function WriteDesk({
       notes?: string;
       sourceKind: SourceKind;
       sourceTitle: string;
+      prepTime?: string;
+      cookTime?: string;
+      parts?: IngredientPart[];
+      confidence?: FieldMarks;
     }>,
   ): DraftCard[] {
     return cards.map((card) => ({
       title: card.title,
       makes: card.makes,
-      ingredients: card.ingredients.join("\n"),
+      ingredients: (card.parts && card.parts.length > 0
+        ? card.parts.map((part) => part.line)
+        : card.ingredients
+      ).join("\n"),
       steps: card.steps.join("\n"),
       notes: card.notes?.trim() ?? "",
       sourceKind: card.sourceKind,
       sourceTitle: card.sourceTitle,
       keep: true,
+      prepTime: card.prepTime ?? "",
+      cookTime: card.cookTime ?? "",
+      parts: card.parts,
+      marks: card.confidence,
     }));
   }
 
@@ -731,11 +799,16 @@ export function WriteDesk({
       notes?: string;
       sourceKind: SourceKind;
       sourceTitle: string;
+      prepTime?: string;
+      cookTime?: string;
+      parts?: IngredientPart[];
+      confidence?: FieldMarks;
     }>;
     usedAi: boolean;
     kind: ScanKind;
     fileName: string;
     photoCount: number;
+    rawText?: string;
   }) {
     const drafts = draftsFromExtract(input.cards);
     const scanned = drafts[0];
@@ -755,6 +828,8 @@ export function WriteDesk({
           sourceKind: "original",
           sourceTitle: "",
           keep: true,
+          prepTime: "",
+          cookTime: "",
         };
     const pileCards = scanned
       ? drafts.map((draft, index) => (index === 0 ? card : draft))
@@ -776,6 +851,8 @@ export function WriteDesk({
     const titleFromScan = Boolean(
       scanned && scanned.title.trim().length >= 2 && !titleIsOnlyTheFile,
     );
+    setRawText(input.rawText ?? "");
+    setShowRaw(false);
     setReadFrom(titleFromScan || hasWords ? input.kind : null);
     setReadFields({
       title: titleFromScan,
@@ -868,6 +945,7 @@ export function WriteDesk({
       );
       let cards: Parameters<typeof finishScan>[0]["cards"] = [];
       let usedAi = false;
+      let readText = "";
       try {
         const extracted = await extractCard({
           ...writeAccess,
@@ -882,6 +960,7 @@ export function WriteDesk({
         });
         cards = extracted.cards;
         usedAi = extracted.usedAi;
+        readText = extracted.rawText;
       } catch (caught) {
         console.error(caught);
       }
@@ -891,6 +970,7 @@ export function WriteDesk({
         kind: "photo",
         fileName: prepared[0]!.name,
         photoCount: prepared.length,
+        rawText: readText,
       });
     } catch (caught) {
       setError(messageFrom(caught, "Couldn't upload the photos."));
@@ -953,6 +1033,7 @@ export function WriteDesk({
       setExtractNote(isImage ? "Reading the photo…" : "Reading the file…");
       let cards: Parameters<typeof finishScan>[0]["cards"] = [];
       let usedAi = false;
+      let readText = "";
       try {
         const extracted = await extractCard({
           ...writeAccess,
@@ -962,6 +1043,7 @@ export function WriteDesk({
         });
         cards = extracted.cards;
         usedAi = extracted.usedAi;
+        readText = extracted.rawText;
       } catch (caught) {
         console.error(caught);
       }
@@ -971,6 +1053,7 @@ export function WriteDesk({
         kind: isImage ? "photo" : "file",
         fileName: prepared.name,
         photoCount: isImage ? 1 : 0,
+        rawText: readText,
       });
     } catch (caught) {
       setError(messageFrom(caught, "Couldn't read that file."));
@@ -979,9 +1062,68 @@ export function WriteDesk({
     }
   }
 
+  function applyRawWords() {
+    const card = readRecipeText(rawText);
+    const [draft] = draftsFromExtract([card]);
+    if (!draft) return;
+    applyCardToForm({
+      ...draft,
+      title: title.trim().length >= 2 ? title : draft.title || title,
+    });
+    setShowRaw(false);
+    setExtractNote("Sorted the words. Change anything that's wrong.");
+  }
+
+  async function readPasted(text: string) {
+    const body = text.trim();
+    if (body.length < 8) {
+      setError("Paste a bit more of the recipe, then try again.");
+      return;
+    }
+    setError(null);
+    setExtracting(true);
+    setExtractNote("Reading the recipe…");
+    setRawText(text);
+    try {
+      const extracted = await extractFromText({ ...writeAccess, text: body });
+      finishScan({
+        cards: extracted.cards,
+        usedAi: extracted.usedAi,
+        kind: "paste",
+        fileName: "pasted recipe",
+        photoCount: 0,
+        rawText: extracted.rawText || text,
+      });
+      setIntake("paste");
+    } catch (caught) {
+      const local = readRecipeText(body);
+      const [draft] = draftsFromExtract([local]);
+      if (draft) {
+        applyCardToForm(draft);
+        setPile([draft]);
+      }
+      setRawText(body);
+      setShowRaw(true);
+      setScreen("card");
+      setIntake("paste");
+      setExtractNote("Kept what you pasted. You can sort it or fix it by hand.");
+      setError(messageFrom(caught, "Couldn't read that just now. The words are still here."));
+    } finally {
+      setExtracting(false);
+    }
+  }
+
   function start(next: Intake) {
     setError(null);
     setIntake(next);
+    if (next === "paste") {
+      setSourceKind("original");
+      setScreen("paste");
+      window.setTimeout(() => {
+        document.getElementById("paste-recipe")?.focus();
+      }, 0);
+      return;
+    }
     if (next === "link") {
       setSourceKind("original");
       setScreen("card");
@@ -1040,7 +1182,13 @@ export function WriteDesk({
     setShowDate(false);
     setChanges([]);
     setMakes("");
+    setPrepTime("");
+    setCookTime("");
     setIngredients("");
+    setParts(null);
+    setMarks(null);
+    setRawText("");
+    setShowRaw(false);
     setSteps("");
     setOriginStorageId(null);
     setOriginIsImage(false);
@@ -1165,6 +1313,8 @@ export function WriteDesk({
           bakerName,
           kind: trayFor(draft.title, draft.sourceTitle),
           makes: draft.makes,
+          prepTime: draft.prepTime,
+          cookTime: draft.cookTime,
           ingredients: linesFromText(draft.ingredients),
           steps: linesFromText(draft.steps),
           originStorageId: originStorageId ?? undefined,
@@ -1235,6 +1385,8 @@ export function WriteDesk({
           sourceKind,
           kind: trayFor(title, sourceTitle),
           makes,
+          prepTime,
+          cookTime,
           ingredients: linesFromText(ingredients),
           steps: linesFromText(steps),
           coverStorageId: tray ? coverStorageId : undefined,
@@ -1279,6 +1431,8 @@ export function WriteDesk({
         bakerName,
         kind: trayFor(title, sourceTitle),
         makes,
+        prepTime,
+        cookTime,
         ingredients: linesFromText(ingredients),
         steps: linesFromText(steps),
         originStorageId: originStorageId ?? undefined,
@@ -1444,10 +1598,17 @@ export function WriteDesk({
             </p>
           ) : null}
           {extracting ? (
-            <div className="write-desk-status" role="status">
-              <p className="text-[18px] leading-7 text-ink">
+            <div className="write-desk-status" role="status" aria-live="polite">
+              <p className="font-display text-[1.7rem] leading-8 text-ink">
+                Reading the recipe
+              </p>
+              <p className="mt-2 text-[18px] leading-7 text-ink">
                 {extractNote ??
                   "Reading the file. If there are a lot of recipes, this can take a minute."}
+              </p>
+              <p className="mt-2 text-[16px] leading-6 text-ink-soft">
+                Handwriting and a second photo take a moment. The picture stays
+                either way.
               </p>
             </div>
           ) : (
@@ -1461,6 +1622,13 @@ export function WriteDesk({
                 }}
               >
                 Take or choose photos
+              </button>
+              <button
+                type="button"
+                className="book-press book-press-text"
+                onClick={() => start("paste")}
+              >
+                Paste the words
               </button>
               <button
                 type="button"
@@ -1489,6 +1657,66 @@ export function WriteDesk({
             </div>
           )}
         </div>
+      ) : screen === "paste" ? (
+        <form
+          className="mt-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void readPasted(rawText);
+          }}
+        >
+          <button
+            type="button"
+            className="book-press book-press-text self-start"
+            onClick={startOver}
+          >
+            Add a different way
+          </button>
+          <h1 className="font-display mt-2 text-[2.15rem] leading-[1.12] tracking-tight">
+            Paste the recipe
+          </h1>
+          <p className="mt-3 text-[19px] leading-8 text-ink-soft">
+            A card, a note, or a page you copied. I'll sort the title, the
+            amounts, and the steps.
+          </p>
+          {extracting ? (
+            <div className="write-desk-status" role="status" aria-live="polite">
+              <p className="font-display text-[1.7rem] leading-8 text-ink">
+                Reading the recipe
+              </p>
+              <p className="mt-2 text-[18px] leading-7 text-ink">
+                {extractNote ?? "Reading the recipe…"}
+              </p>
+            </div>
+          ) : (
+            <>
+              <Label htmlFor="paste-recipe" className="mt-6">
+                The recipe
+              </Label>
+              <Textarea
+                id="paste-recipe"
+                value={rawText}
+                onChange={(event) => setRawText(event.target.value)}
+                autoCapitalize="sentences"
+                className="mt-2 min-h-48 w-full"
+                placeholder={"Sunday stew\nServes 6\n1/2 cup flour\nSimmer."}
+              />
+              {error ? (
+                <p role="alert" className="mt-4 text-[17px] text-cinnamon-deep">
+                  {error}
+                </p>
+              ) : null}
+              <div className="write-desk-savebar sticky bottom-0 z-10 mt-6 -mx-2 border-t border-rule bg-paper px-2 py-3">
+                <button
+                  type="submit"
+                  className="book-press book-press-text book-press-save w-full"
+                >
+                  Read it
+                </button>
+              </div>
+            </>
+          )}
+        </form>
       ) : screen === "tray" ? (
         <div className="mt-3">
           <button
@@ -1739,9 +1967,15 @@ export function WriteDesk({
                   autoComplete="off"
                   autoCapitalize="sentences"
                   enterKeyHint="next"
+                  aria-describedby={marks?.title === "low" ? "title-check" : undefined}
                   className="mt-2"
                 />
                 <ReadFromLine from={readFrom} show={readFields.title} />
+                {marks?.title === "low" ? (
+                  <p className="write-desk-check" id="title-check">
+                    Check this
+                  </p>
+                ) : null}
               </div>
 
               <div>
@@ -1874,21 +2108,92 @@ export function WriteDesk({
               onChange={(event) => setMakes(event.target.value)}
               placeholder={MAKES_HINT[trayFor(title, sourceTitle)]}
               className="mt-2 min-h-12 w-full"
+              aria-describedby={marks?.makes === "low" ? "makes-check" : undefined}
             />
+            {marks?.makes === "low" ? (
+              <p className="write-desk-check" id="makes-check">
+                Check this
+              </p>
+            ) : null}
+
+            {(intake !== "type" ||
+            prepTime.length > 0 ||
+            cookTime.length > 0 ||
+            editingBakeId) ? (
+            <>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className={marks?.times === "low" ? "write-desk-unsure" : undefined}>
+                <Label htmlFor="prep-time">Prep time</Label>
+                <Input
+                  id="prep-time"
+                  type="text"
+                  autoComplete="off"
+                  value={prepTime}
+                  onChange={(event) => {
+                    setPrepTime(event.target.value);
+                    setMarks((current) =>
+                      current ? { ...current, times: "high" } : current,
+                    );
+                  }}
+                  placeholder="15 min"
+                  className="mt-2 min-h-12 w-full"
+                  aria-describedby={marks?.times === "low" ? "time-check" : undefined}
+                />
+              </div>
+              <div className={marks?.times === "low" ? "write-desk-unsure" : undefined}>
+                <Label htmlFor="cook-time">Cook time</Label>
+                <Input
+                  id="cook-time"
+                  type="text"
+                  autoComplete="off"
+                  value={cookTime}
+                  onChange={(event) => {
+                    setCookTime(event.target.value);
+                    setMarks((current) =>
+                      current ? { ...current, times: "high" } : current,
+                    );
+                  }}
+                  placeholder="40 min"
+                  className="mt-2 min-h-12 w-full"
+                />
+              </div>
+            </div>
+            {marks?.times === "low" ? (
+              <p className="write-desk-check" id="time-check">
+                Check this
+              </p>
+            ) : null}
+            </>
+            ) : null}
 
             <div className="write-desk-recipe-cols mt-6">
               <div>
-                <RecipeLines
-                  legend="What went in"
-                  hint="One per line — so you can search later. Leave this blank if the photo is enough."
-                  value={ingredients}
-                  onChange={setIngredients}
-                  placeholder="3–6 bell peppers"
-                  noun="ingredient"
-                  autoCapitalize="off"
-                >
-                  <ReadFromLine from={readFrom} show={readFields.ingredients} />
-                </RecipeLines>
+                {parts ? (
+                  <IngredientParts
+                    parts={parts}
+                    onChange={(next) => {
+                      setParts(next);
+                      setIngredients(
+                        next
+                          .map((part) => part.line)
+                          .filter((line) => line.length > 0)
+                          .join("\n"),
+                      );
+                    }}
+                  />
+                ) : (
+                  <RecipeLines
+                    legend="What went in"
+                    hint="One per line — so you can search later. Leave this blank if the photo is enough."
+                    value={ingredients}
+                    onChange={setIngredients}
+                    placeholder="3–6 bell peppers"
+                    noun="ingredient"
+                    autoCapitalize="off"
+                  >
+                    <ReadFromLine from={readFrom} show={readFields.ingredients} />
+                  </RecipeLines>
+                )}
               </div>
               <div>
                 <RecipeLines
@@ -1979,6 +2284,37 @@ export function WriteDesk({
               </ul>
             ) : null}
           </section>
+
+          {intake !== "type" ? (
+            <div className="mt-6">
+              {showRaw ? (
+                <div>
+                  <Label htmlFor="raw-recipe">The words from the card</Label>
+                  <Textarea
+                    id="raw-recipe"
+                    value={rawText}
+                    onChange={(event) => setRawText(event.target.value)}
+                    className="mt-2 min-h-36 w-full"
+                  />
+                  <button
+                    type="button"
+                    className="book-press book-press-text mt-3 w-full sm:w-auto"
+                    onClick={applyRawWords}
+                  >
+                    Sort these words
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="book-press book-press-text w-full sm:w-auto"
+                  onClick={() => setShowRaw(true)}
+                >
+                  Edit the words yourself
+                </button>
+              )}
+            </div>
+          ) : null}
 
           <div className="write-desk-savebar sticky bottom-0 z-10 mt-8 -mx-2 border-t border-rule bg-paper px-2 py-3">
             {error ? (

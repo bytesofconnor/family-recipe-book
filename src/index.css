@@ -4677,6 +4677,42 @@ summary::-webkit-details-marker {
   margin-top: 0.75rem;
 }
 
+.write-desk-unsure {
+  margin-top: 0.75rem;
+  padding: 0.7rem 0.75rem 0.2rem;
+  border-left: 3px solid var(--color-cinnamon-deep);
+  background: color-mix(in srgb, var(--color-cinnamon) 14%, transparent);
+}
+
+.write-desk-check {
+  margin: 0.35rem 0 0;
+  color: var(--color-cinnamon-deep);
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.write-desk-part-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.65rem;
+}
+
+.write-desk-part-label {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: var(--color-ink-soft);
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+@media (min-width: 720px) {
+  .write-desk-part-grid {
+    grid-template-columns: 7.5rem 8.5rem minmax(0, 1fr);
+    align-items: end;
+  }
+}
+
 .write-desk-line-controls {
   display: flex;
   flex-wrap: wrap;

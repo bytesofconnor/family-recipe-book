@@ -11,7 +11,7 @@ Private family book. Unlisted — `robots.txt` disallows everything. The baker w
 | App (SPA) | Vercel project `baking-addiction` | Vercel team `team_ynn7qy4sDXJcDEMHSuWLuXXo` / `connors-projects-408eaae2`. Project `prj_aFYDZXk50XMLtWsmraJ6lbd8eTAg` |
 | Backend + DB | Convex project `baking-addiction` | Production deployment `beloved-lapwing-642` |
 | Domain | `thefamilyrecipebook.app` | Live on Vercel. Old alias `baking-addiction.vercel.app` still works. |
-| Kitchen AI | Vercel AI Gateway via Convex actions `kitchen.remix` and `extractCard` | `AI_GATEWAY_API_KEY` is **not** set. Ask the kitchen falls back to notes in `convex/lib/kitchenLetter.ts`. Add a recipe still saves; the scan is skipped until the key is set. |
+| Kitchen AI | Vercel AI Gateway via Convex actions `kitchen.remix` and `extractCard` | `AI_GATEWAY_API_KEY` is **not** set. Ask the kitchen falls back to notes in `convex/lib/kitchenLetter.ts`. A photo still saves. Reading the words on a photo waits for that key. Pasted text, and a link that publishes its own recipe data, are sorted on the server without the key. |
 
 Git remote: `github.com-personal:bytesofconnor/baking-addiction.git`
 
@@ -124,14 +124,14 @@ Set on the **Convex** deployment, not Vercel.
 | `JWKS` | Yes | Convex Auth public key. Generated with the private key. |
 | `AUTH_GOOGLE_ID` | Yes | Google OAuth client ID. |
 | `AUTH_GOOGLE_SECRET` | Yes | Google OAuth client secret. |
-| `AI_GATEWAY_API_KEY` | No | Convex. Same key for Ask the kitchen and for reading a recipe off a photo, PDF, or link. If it is missing, both still work: Ask the kitchen answers from the baker's notes, and Add a recipe leaves the fields blank so a name and a photo are enough to save. No second secret. |
+| `AI_GATEWAY_API_KEY` | No | Convex. Same key for Ask the kitchen and for reading a recipe off a photo, PDF, or link. If it is missing, Ask the kitchen answers from the baker's notes, a photo still saves with blank fields, and pasted words are sorted locally. Set this key to read handwriting and photos. No second secret. |
 
 ```bash
 npx convex env set WRITER_PASSWORD --deployment <convex-team>:baking-addiction:production
 npx convex env set AI_GATEWAY_API_KEY --deployment <convex-team>:baking-addiction:production
 ```
 
-That one key turns on both Ask the kitchen and reading a recipe off photos, a PDF, a PowerPoint, or a link. There is no second secret. Set it on production `beloved-lapwing-642` (and on a local Convex deployment if you want the scan there). Without it, Add a recipe leaves the fields blank and a name plus a photo is enough to save.
+That one key turns on both Ask the kitchen and reading a recipe off photos, a PDF, a PowerPoint, or a link. There is no second secret. Set it on production `beloved-lapwing-642` (and on a local Convex deployment if you want the scan there). Without it, a photo still saves with blank fields, and a name plus a photo is enough to save. Pasted words, and a link that publishes its own recipe data, are still sorted.
 
 Scanning stays cheap on purpose: one model call per pile or per link, photos are shrunk in the browser to a 1280px JPEG before upload, and any image over about 1.5MB is left out of that call (at most six photos go to the model). Sally links stay a title credit only. The book does not fetch or copy her page.
 
