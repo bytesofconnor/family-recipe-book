@@ -6,6 +6,7 @@
  */
 import { readFileSync } from "node:fs";
 import {
+  extractionInstructions,
   plainTextFromHtml,
   readRecipeText,
   recipeFromHtml,
@@ -325,9 +326,10 @@ async function scoreVision() {
       mime: "image/png",
     }));
     const prompt = [
-      "Read this recipe photo. Return only JSON.",
-      '{"cards":[{"title":"","makes":"","prepTime":"","cookTime":"","ingredients":[{"quantity":"","unit":"","item":"","confidence":"high"}],"steps":[{"text":"","confidence":"high"}],"notes":"","sourceKind":"family","sourceTitle":"","confidence":{"title":"high","makes":"high","times":"high","notes":"high"}}]}',
-    ].join("\n");
+      extractionInstructions({ imageCount: images.length }),
+      `File name: ${files[0] ?? name}`,
+      "No plain text was available. Read the recipe from the attached photos.",
+    ].join("\n\n");
     try {
       const text = await askRecipeModel({ apiKey: key, prompt, images });
       const verdict = validateRecipeJson(text);
@@ -348,15 +350,21 @@ async function scoreVision() {
   try {
     const text = await askRecipeModel({
       apiKey: key,
-      prompt: "If this image is not a recipe, return {\"cards\":[]}. Otherwise return the recipe JSON.",
+      prompt: [
+        extractionInstructions({ imageCount: 1 }),
+        "File name: not-a-recipe.png",
+        "No plain text was available. Read the recipe from the attached photos.",
+      ].join("\n\n"),
       images: [{ bytes: quiet, mime: "image/png" }],
     });
     const verdict = validateRecipeJson(text);
     const empty = verdict.ok && verdict.cards.length === 0;
-    console.log(`not-a-recipe.png: ${empty ? "clean empty" : "returned a card"}`);
+    console.log(`not-a-recipe.png: ${empty ? "clean" : "returned a card"}`);
+    if (!empty) misses += 1;
   } catch (error) {
     const message = error instanceof Error ? error.name : "error";
     console.log(`not-a-recipe.png: ${message}`);
+    misses += 1;
   }
   if (misses > 0) process.exitCode = 1;
 }

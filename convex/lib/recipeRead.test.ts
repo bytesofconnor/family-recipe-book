@@ -85,6 +85,33 @@ describe("validateRecipeJson", () => {
     const verdict = validateRecipeJson("I could not read the card.");
     expect(verdict.ok).toBe(false);
   });
+
+  it("keeps an abbreviation unit on a structured ingredient", () => {
+    const verdict = validateRecipeJson(
+      JSON.stringify({
+        cards: [
+          {
+            title: "Lemon rice",
+            ingredients: [{ quantity: "2", unit: "tbsp", item: "butter", confidence: "high" }],
+            steps: ["Stir."],
+          },
+        ],
+      }),
+    );
+    expect(verdict.ok).toBe(true);
+    if (!verdict.ok) return;
+    expect(verdict.cards[0]?.parts[0]).toMatchObject({
+      quantity: "2",
+      unit: "tablespoon",
+      item: "butter",
+      line: "2 tablespoons butter",
+    });
+  });
+
+  it("accepts an explicit empty card list", () => {
+    const verdict = validateRecipeJson('{"cards":[]}');
+    expect(verdict).toEqual({ ok: true, cards: [] });
+  });
 });
 
 describe("readRecipeText", () => {

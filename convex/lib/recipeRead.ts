@@ -112,24 +112,30 @@ function partFromUnknown(value: unknown, index: number): IngredientPart | string
   if (item.trim().length === 0 && quantity.trim().length === 0) {
     return `ingredient ${index + 1} needs an item`;
   }
-  const parsed = parseIngredientLine(
-    formatIngredientLine({
-      quantity: quantity.trim(),
-      unit: unit.trim(),
-      item: item.trim(),
-    }),
-  );
+  const quantityText = quantity.trim();
+  const unitText = unit.trim();
+  const itemText = item.trim();
+  const formatted = formatIngredientLine({
+    quantity: quantityText,
+    unit: unitText,
+    item: itemText,
+  });
+  const parsed = parseIngredientLine(formatted);
+  const lostUnit = unitText.length > 0 && parsed.unit.length === 0;
+  const lostItem =
+    itemText.length > 0 &&
+    !parsed.item.toLowerCase().includes(itemText.toLowerCase());
   const kept =
-    parsed.item.length > 0
+    !lostUnit && !lostItem && parsed.item.length > 0
       ? parsed
       : {
-          ...parsed,
-          item: item.trim(),
-          line: formatIngredientLine({
-            quantity: parsed.quantity || quantity.trim(),
-            unit: parsed.unit || unit.trim(),
-            item: item.trim(),
-          }),
+          quantity: quantityText,
+          unit: unitText,
+          item: itemText,
+          line: [quantityText, unitText, itemText]
+            .filter((bit) => bit.length > 0)
+            .join(" "),
+          confidence: "low" as const,
         };
   const given = asConfidence(row.confidence);
   return {
@@ -275,10 +281,7 @@ export function validateRecipeJson(text: string): ModelVerdict {
       last = "the answer needs a cards array";
       continue;
     }
-    if (rows.length === 0) {
-      last = "cards is empty";
-      continue;
-    }
+    if (rows.length === 0) return { ok: true, cards: [] };
     const cards: ReadCard[] = [];
     for (const [index, row] of rows.slice(0, 12).entries()) {
       if (!row || typeof row !== "object") {
@@ -586,7 +589,9 @@ export function extractionInstructions(input: {
     "Skip title slides, indexes, and pages with no recipe words.",
     "Return ONLY valid JSON, no markdown fences:",
     '{"cards":[{"title":"","makes":"","prepTime":"","cookTime":"","ingredients":[{"quantity":"1/2","unit":"cup","item":"sugar","confidence":"high"}],"steps":[{"text":"Stir.","confidence":"high"}],"notes":"","sourceKind":"original","sourceTitle":"","confidence":{"title":"high","makes":"high","times":"high","notes":"high"}}]}',
-    "ingredients is an array. Each ingredient has quantity (the amount as printed, including 1/2, 1½, or 1-2, or empty), unit (a cooking unit, or empty), and item (the food, without the amount).",
+    "ingredients is an array. Each ingredient has quantity (the amount as printed, including 1/2, 1½, or 1-2, or empty), unit (the full name, such as cup, tablespoon, teaspoon, ounce, pound, or gram, or empty), and item (the food, without the amount).",
+    "Write tablespoon, not tbsp. Write teaspoon, not tsp.",
+    "If nothing in the picture or the text is a recipe, return {\"cards\":[]}.",
     "Fractions stay exact. Do not turn 1/2 into 0.5. A line with no amount still needs an item.",
     "steps is an array of short numbered actions without the leading number.",
     "makes is the yield or servings. prepTime and cookTime are short, or empty. notes is one short aside, or empty.",
