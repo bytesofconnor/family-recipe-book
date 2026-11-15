@@ -34,7 +34,9 @@ test("batch size changes amounts on a phone", async ({ page }) => {
   await expect(ingredients).toContainText("2 cups sugar");
   await expect(ingredients).toContainText("4 eggs");
   await expect(page.getByText("24 muffins", { exact: true })).toBeVisible();
-  await expect(page.getByText(/Amounts are for double the recipe/)).toBeVisible();
+  await expect(page.getByText("Amounts doubled.", { exact: true })).toBeVisible();
+  await expect(page.locator("mark", { hasText: "4 cups flour" })).toBeVisible();
+  await expect(page.locator("mark", { hasText: "24 muffins" })).toBeVisible();
 
   await half.click();
   await expect(half).toHaveAttribute("aria-pressed", "true");
@@ -42,6 +44,8 @@ test("batch size changes amounts on a phone", async ({ page }) => {
   await expect(ingredients).toContainText("½ cup sugar");
   await expect(ingredients).toContainText("1 egg");
   await expect(page.getByText("6 muffins", { exact: true })).toBeVisible();
+  await expect(page.getByText("Amounts halved.", { exact: true })).toBeVisible();
+  await expect(page.locator("mark", { hasText: "1 cup flour" })).toBeVisible();
 
   await original.click();
   await expect(original).toHaveAttribute("aria-pressed", "true");
@@ -49,5 +53,6 @@ test("batch size changes amounts on a phone", async ({ page }) => {
   await expect(ingredients).toContainText("1 cup sugar");
   await expect(ingredients).toContainText("2 eggs");
   await expect(page.getByText("12 muffins", { exact: true })).toBeVisible();
-  await expect(page.getByText(/Amounts are for/)).toHaveCount(0);
+  await expect(page.getByText(/Amounts doubled|Amounts halved/)).toHaveCount(0);
+  await expect(page.locator(".recipe-scale-mark")).toHaveCount(0);
 });

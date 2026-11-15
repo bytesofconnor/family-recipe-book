@@ -134,7 +134,7 @@ export function BakePage() {
         </div>
       </div>
 
-      <header className="bake-leaf-hero">
+      <div className="bake-leaf-spread">
         <div className="bake-leaf-hero-photo">
           {galleryPhotos.length > 0 ? (
             <PhotoGallery photos={galleryPhotos} title={bake.title} />
@@ -149,46 +149,47 @@ export function BakePage() {
           )}
         </div>
         <div className="bake-leaf-hero-copy">
-          <Kicker className="bake-leaf-kicker">
-            <span className="bake-leaf-kicker-kind">{KIND_LABELS[kind]}</span>
-            <span className="bake-leaf-kicker-sep" aria-hidden="true">
-              ·
-            </span>
-            <span className="bake-leaf-baker">
-              <BakerAvatar
-                name={bake.bakerName}
-                url={bake.bakerAvatarUrl}
-                size="sm"
-              />
-              {bake.bakerName}
-            </span>
-            <span className="bake-leaf-kicker-sep" aria-hidden="true">
-              ·
-            </span>
-            <time dateTime={bake.bakedOn}>{formatBakeDate(bake.bakedOn)}</time>
-          </Kicker>
-          <h1 className="bake-leaf-title">{bake.title}</h1>
-          <RecipeSource
-            sourceKind={bake.sourceKind}
-            sourceTitle={bake.sourceTitle}
-            sourceUrl={bake.sourceUrl}
-          />
-        </div>
-      </header>
-
-      {hasIntro ? (
-        <div className="bake-leaf-intro">
-          {firstParagraph ? (
-            <p className={leadClass(firstParagraph)}>{firstParagraph}</p>
+          <header className="bake-leaf-hero">
+            <Kicker className="bake-leaf-kicker">
+              <span className="bake-leaf-kicker-kind">{KIND_LABELS[kind]}</span>
+              <span className="bake-leaf-kicker-sep" aria-hidden="true">
+                ·
+              </span>
+              <span className="bake-leaf-baker">
+                <BakerAvatar
+                  name={bake.bakerName}
+                  url={bake.bakerAvatarUrl}
+                  size="sm"
+                />
+                {bake.bakerName}
+              </span>
+              <span className="bake-leaf-kicker-sep" aria-hidden="true">
+                ·
+              </span>
+              <time dateTime={bake.bakedOn}>{formatBakeDate(bake.bakedOn)}</time>
+            </Kicker>
+            <h1 className="bake-leaf-title">{bake.title}</h1>
+            <RecipeSource
+              sourceKind={bake.sourceKind}
+              sourceTitle={bake.sourceTitle}
+              sourceUrl={bake.sourceUrl}
+            />
+          </header>
+          {hasIntro ? (
+            <div className="bake-leaf-intro">
+              {firstParagraph ? (
+                <p className={leadClass(firstParagraph)}>{firstParagraph}</p>
+              ) : null}
+              {restParagraphs.map((paragraph) => (
+                <p key={paragraph}>{paragraph}</p>
+              ))}
+              {bake.outcome ? (
+                <p className="bake-leaf-outcome">{bake.outcome}</p>
+              ) : null}
+            </div>
           ) : null}
-          {restParagraphs.map((paragraph) => (
-            <p key={paragraph}>{paragraph}</p>
-          ))}
-          {bake.outcome ? (
-            <p className="bake-leaf-outcome">{bake.outcome}</p>
-          ) : null}
         </div>
-      ) : null}
+      </div>
 
       <div className="bake-leaf-method">
         <KitchenMethod

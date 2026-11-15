@@ -28,15 +28,17 @@ describe("KitchenMethod batch size", () => {
     expect(screen.getByText("2 cups flour")).toBeInTheDocument();
     expect(screen.getByText("salt to taste")).toBeInTheDocument();
     expect(screen.getByText("12 muffins")).toBeInTheDocument();
-    expect(screen.queryByText(/Amounts are for/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Amounts doubled|Amounts halved/)).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "2×" }));
 
-    expect(screen.getByText("4 cups flour")).toBeInTheDocument();
-    expect(screen.getByText("salt to taste")).toBeInTheDocument();
-    expect(screen.getByText("24 muffins")).toBeInTheDocument();
+    expect(screen.getByText("4 cups flour", { selector: "mark" })).toBeInTheDocument();
+    expect(screen.getByText("salt to taste").closest("mark")).toBeNull();
+    expect(screen.getByText("24 muffins", { selector: "mark" })).toBeInTheDocument();
     expect(
-      screen.getByText("Amounts are for double the recipe. This makes 24 muffins."),
+      screen.getByText(
+        "Amounts doubled. Lines without a number stay the same.",
+      ),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "2×" })).toHaveAttribute(
       "aria-pressed",
@@ -47,7 +49,8 @@ describe("KitchenMethod batch size", () => {
 
     expect(screen.getByText("2 cups flour")).toBeInTheDocument();
     expect(screen.getByText("12 muffins")).toBeInTheDocument();
-    expect(screen.queryByText(/Amounts are for/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Amounts doubled|Amounts halved/)).not.toBeInTheDocument();
+    expect(document.querySelector(".recipe-scale-mark")).toBeNull();
   });
 
   it("resets to 1× when the recipe changes", async () => {
@@ -59,10 +62,50 @@ describe("KitchenMethod batch size", () => {
     view.rerender(recipe("monday"));
 
     expect(screen.getByText("2 cups flour")).toBeInTheDocument();
-    expect(screen.queryByText(/Amounts are for/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Amounts halved/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "1×" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
+  });
+
+  it("says when the ingredients have no amounts and still scales the yield", async () => {
+    const user = userEvent.setup();
+    render(
+      <KitchenMethod
+        makes="12 muffins"
+        ingredients={["salt to taste"]}
+        steps={["Stir."]}
+        sourceTitle=""
+        sourceUrl=""
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "2×" }));
+
+    expect(
+      screen.getByText(
+        "These ingredients don’t have amounts to change. The yield is doubled.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("salt to taste").closest("mark")).toBeNull();
+    expect(screen.getByText("24 muffins", { selector: "mark" })).toBeInTheDocument();
+  });
+
+  it("hides batch size when nothing can scale", () => {
+    render(
+      <KitchenMethod
+        makes="a generous plate"
+        ingredients={["salt to taste", "pinch of cinnamon"]}
+        steps={["Stir."]}
+        sourceTitle=""
+        sourceUrl=""
+      />,
+    );
+
+    expect(screen.queryByText("Batch size")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "2×" })).not.toBeInTheDocument();
+    expect(screen.getByText("a generous plate")).toBeInTheDocument();
+    expect(screen.getByText("salt to taste")).toBeInTheDocument();
   });
 });

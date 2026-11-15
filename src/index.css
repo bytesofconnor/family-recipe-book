@@ -4546,6 +4546,18 @@ summary::-webkit-details-marker {
   flex: 0 0 auto;
 }
 
+.bake-leaf {
+  width: min(100%, 72rem);
+  margin-inline: auto;
+}
+
+.bake-leaf-spread {
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+  margin-top: 1.15rem;
+}
+
 .bake-leaf-hero {
   display: flex;
   flex-direction: column;
@@ -4553,9 +4565,17 @@ summary::-webkit-details-marker {
   margin-top: 1.15rem;
 }
 
+.bake-leaf-spread .bake-leaf-hero {
+  margin-top: 0;
+}
+
 .bake-leaf-hero-photo {
   width: 100%;
   max-width: 22rem;
+}
+
+.bake-leaf-spread .bake-leaf-hero-photo {
+  max-width: min(36rem, 100%);
 }
 
 .bake-leaf-hero-photo .photo-plate,
@@ -4930,8 +4950,9 @@ summary::-webkit-details-marker {
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
-  width: min(100%, 52rem);
-  margin: 1.45rem auto 0;
+  width: 100%;
+  max-width: 40rem;
+  margin: 0;
 }
 
 .bake-leaf-outcome {
@@ -4953,23 +4974,26 @@ summary::-webkit-details-marker {
   max-width: none;
 }
 
-@media (min-width: 720px) {
-  .bake-leaf-hero {
+@media (min-width: 960px) {
+  .bake-leaf-spread {
     display: grid;
-    grid-template-columns: minmax(18rem, min(46%, 40rem)) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+    column-gap: clamp(1.35rem, 2.2vw, 2.75rem);
     align-items: start;
-    gap: 1.5rem;
+    margin-top: 1.35rem;
   }
 
-  .bake-leaf-hero-photo {
-    width: 100%;
+  .bake-leaf-spread .bake-leaf-hero-photo {
     max-width: none;
-    margin: 0;
   }
 
-  .bake-leaf-hero-copy {
-    display: flex;
+  .bake-leaf-spread .bake-leaf-hero-copy {
     padding-top: 0.15rem;
+    max-width: none;
+  }
+
+  .bake-leaf-spread .bake-leaf-intro {
+    max-width: none;
   }
 }
 
@@ -4980,13 +5004,72 @@ summary::-webkit-details-marker {
 }
 
 @media (max-width: 639px) {
+  .bake-leaf-spread {
+    margin-top: 0.85rem;
+    gap: 0.95rem;
+  }
+
   .bake-leaf-hero {
     margin-top: 0.85rem;
     gap: 0.95rem;
   }
 
-  .bake-leaf-hero-photo {
+  .bake-leaf-spread .bake-leaf-hero {
+    margin-top: 0;
+  }
+
+  .bake-leaf-hero-photo,
+  .bake-leaf-spread .bake-leaf-hero-photo {
     max-width: 100%;
+  }
+
+  .bake-leaf-intro {
+    max-width: none;
+  }
+}
+
+.kitchen-method {
+  container-type: inline-size;
+}
+
+.kitchen-method-cols {
+  display: grid;
+  gap: 1.75rem;
+  margin-top: 1.25rem;
+}
+
+.recipe-scale-note:empty {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.recipe-scale-mark {
+  background: color-mix(in srgb, var(--color-wash-warm) 38%, var(--color-paper-raised));
+  color: inherit;
+  border-radius: 0.16em;
+  padding: 0.05em 0.22em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+@container (min-width: 40rem) {
+  .kitchen-method-cols {
+    grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+    column-gap: 0;
+    align-items: start;
+  }
+
+  .kitchen-method-cols:has(.kitchen-method-what) .kitchen-method-how {
+    margin-left: 1.75rem;
+    padding-left: 1.75rem;
+    border-left: 1px solid color-mix(in srgb, var(--color-rule) 72%, transparent);
   }
 }
 
@@ -5483,5 +5566,11 @@ summary::-webkit-details-marker {
   .recipe-scale-choice[aria-pressed="true"] {
     outline: 2px solid Highlight;
     outline-offset: 2px;
+  }
+
+  .recipe-scale-mark {
+    background: Mark;
+    color: MarkText;
+    forced-color-adjust: none;
   }
 }

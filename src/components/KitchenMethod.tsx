@@ -4,8 +4,15 @@ import {
   SCALE_CHOICES,
   type ScaleFactor,
   batchNote,
+  recipeCanScale,
   scaleAmountText,
 } from "@/lib/scaleAmount";
+
+function ScaledText({ text, factor }: { text: string; factor: ScaleFactor }) {
+  const shown = scaleAmountText(text, factor);
+  if (factor === 1 || shown === text) return shown;
+  return <mark className="recipe-scale-mark">{shown}</mark>;
+}
 
 export function KitchenMethod({
   makes,
@@ -36,10 +43,10 @@ export function KitchenMethod({
   }
 
   const blocks = prose.split("\n\n").filter((block) => block.length > 0);
-  const canScale = whatWentIn.length > 0;
+  const canScale = recipeCanScale(makes, whatWentIn);
   const shownScale: ScaleFactor = canScale ? scale : 1;
-  const note = canScale ? batchNote(shownScale, makes) : null;
-  const shownMakes = makes ? scaleAmountText(makes, shownScale) : "";
+  const note = canScale ? batchNote(shownScale, makes, whatWentIn) : null;
+  const yieldText = makes?.trim() ?? "";
 
   return (
     <section
@@ -87,23 +94,24 @@ export function KitchenMethod({
               })}
             </div>
           </div>
-          {note ? (
-            <p className="mt-2 text-[16px] leading-6 text-cocoa" aria-live="polite">
-              {note}
-            </p>
-          ) : null}
+          <p
+            className={`recipe-scale-note text-[16px] leading-6 text-cocoa ${note ? "mt-2" : ""}`}
+            aria-live="polite"
+          >
+            {note ?? ""}
+          </p>
         </div>
       ) : null}
-      {shownMakes ? (
+      {yieldText ? (
         <p className="mt-3 font-display text-[1.35rem] leading-8 text-cocoa">
-          {shownMakes}
+          <ScaledText text={yieldText} factor={shownScale} />
         </p>
       ) : null}
 
       {hasLists ? (
-        <div className="mt-5 grid gap-8 md:grid-cols-2 md:gap-10">
+        <div className="kitchen-method-cols">
           {whatWentIn.length > 0 ? (
-            <div>
+            <div className="kitchen-method-what">
               <h3 className="text-[17px] font-medium tracking-[0.02em] text-cinnamon-deep">
                 What went in
               </h3>
@@ -113,14 +121,14 @@ export function KitchenMethod({
                     key={`${index}-${line}`}
                     className="border-t border-rule/80 py-2.5 text-[18px] leading-7 first:border-t-0 first:pt-0 last:pb-0"
                   >
-                    {scaleAmountText(line, shownScale)}
+                    <ScaledText text={line} factor={shownScale} />
                   </li>
                 ))}
               </ul>
             </div>
           ) : null}
           {how.length > 0 ? (
-            <div>
+            <div className="kitchen-method-how">
               <h3 className="text-[17px] font-medium tracking-[0.02em] text-cinnamon-deep">
                 How
               </h3>
