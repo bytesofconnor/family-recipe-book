@@ -314,16 +314,50 @@ export function scaleAmountText(text: string, factor: ScaleFactor): string {
   return text.slice(0, leading.start) + next + rest;
 }
 
-export function batchNote(factor: ScaleFactor, makes?: string): string | null {
+function lineChanges(text: string, factor: ScaleFactor): boolean {
+  if (factor === 1) return false;
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return false;
+  return scaleAmountText(trimmed, factor) !== trimmed;
+}
+
+/** True when half or double would change an ingredient amount or the yield. */
+export function recipeCanScale(
+  makes: string | undefined,
+  ingredients: readonly string[],
+): boolean {
+  if (ingredients.some((line) => lineChanges(line, 2) || lineChanges(line, 0.5))) {
+    return true;
+  }
+  const yieldText = makes ?? "";
+  return lineChanges(yieldText, 2) || lineChanges(yieldText, 0.5);
+}
+
+export function batchNote(
+  factor: ScaleFactor,
+  makes?: string,
+  ingredients: readonly string[] = [],
+): string | null {
   if (factor === 1) return null;
-  const size = factor === 2 ? "double" : "half";
-  const trimmed = makes?.trim() ?? "";
-  if (trimmed.length === 0) {
-    return `Amounts are for ${size} the recipe.`;
+  const lines = ingredients.map((line) => line.trim()).filter((line) => line.length > 0);
+  const scaledCount = lines.filter((line) => lineChanges(line, factor)).length;
+  const yieldText = makes?.trim() ?? "";
+  const yieldChanged = lineChanges(yieldText, factor);
+  if (scaledCount === 0 && !yieldChanged) return null;
+
+  const size = factor === 2 ? "doubled" : "halved";
+  if (scaledCount > 0) {
+    const parts = [`Amounts ${size}.`];
+    if (scaledCount < lines.length) {
+      parts.push("Lines without a number stay the same.");
+    }
+    if (yieldText.length > 0 && !yieldChanged) {
+      parts.push("The yield stays the same.");
+    }
+    return parts.join(" ");
   }
-  const scaled = scaleAmountText(trimmed, factor);
-  if (scaled !== trimmed) {
-    return `Amounts are for ${size} the recipe. This makes ${scaled}.`;
+  if (lines.length > 0) {
+    return `These ingredients don’t have amounts to change. The yield is ${size}.`;
   }
-  return `Amounts are for ${size} the recipe. The yield still says ${trimmed}.`;
+  return `Yield ${size}.`;
 }

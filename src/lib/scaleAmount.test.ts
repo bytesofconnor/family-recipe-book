@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { batchNote, formatAmount, scaleAmountText } from "./scaleAmount";
+import {
+  batchNote,
+  formatAmount,
+  recipeCanScale,
+  scaleAmountText,
+} from "./scaleAmount";
 
 describe("formatAmount", () => {
   it("prints whole numbers without a decimal", () => {
@@ -109,29 +114,58 @@ describe("scaleAmountText", () => {
   });
 });
 
+describe("recipeCanScale", () => {
+  it("is true when an ingredient or the yield has an amount", () => {
+    expect(recipeCanScale("12 muffins", ["2 cups flour"])).toBe(true);
+    expect(recipeCanScale("12 muffins", ["salt to taste"])).toBe(true);
+    expect(recipeCanScale(undefined, ["1 egg"])).toBe(true);
+  });
+
+  it("is false when nothing has an amount to change", () => {
+    expect(recipeCanScale("a generous batch", ["salt to taste", "pinch of salt"])).toBe(
+      false,
+    );
+    expect(recipeCanScale(undefined, [])).toBe(false);
+    expect(recipeCanScale("   ", ["  "])).toBe(false);
+  });
+});
+
 describe("batchNote", () => {
   it("says nothing at the original size", () => {
-    expect(batchNote(1, "12 muffins")).toBeNull();
+    expect(batchNote(1, "12 muffins", ["2 cups flour"])).toBeNull();
     expect(batchNote(1)).toBeNull();
   });
 
-  it("mentions a yield it could scale", () => {
-    expect(batchNote(2, "12 muffins")).toBe(
-      "Amounts are for double the recipe. This makes 24 muffins.",
+  it("says when the amounts changed", () => {
+    expect(batchNote(2, "12 muffins", ["2 cups flour"])).toBe("Amounts doubled.");
+    expect(batchNote(0.5, "12 muffins", ["2 cups flour"])).toBe("Amounts halved.");
+  });
+
+  it("says when a line has no number, and when the yield cannot change", () => {
+    expect(batchNote(2, "12 muffins", ["2 cups flour", "salt to taste"])).toBe(
+      "Amounts doubled. Lines without a number stay the same.",
     );
-    expect(batchNote(0.5, "12 muffins")).toBe(
-      "Amounts are for half the recipe. This makes 6 muffins.",
+    expect(batchNote(2, "About a dozen", ["2 cups flour"])).toBe(
+      "Amounts doubled. The yield stays the same.",
     );
   });
 
-  it("mentions a yield it left alone", () => {
-    expect(batchNote(2, "About a dozen")).toBe(
-      "Amounts are for double the recipe. The yield still says About a dozen.",
+  it("says plainly when the ingredients cannot scale", () => {
+    expect(batchNote(2, "12 muffins", ["salt to taste"])).toBe(
+      "These ingredients don’t have amounts to change. The yield is doubled.",
+    );
+    expect(batchNote(0.5, "12 muffins", ["salt to taste"])).toBe(
+      "These ingredients don’t have amounts to change. The yield is halved.",
     );
   });
 
-  it("skips the yield when the recipe has none", () => {
-    expect(batchNote(2)).toBe("Amounts are for double the recipe.");
-    expect(batchNote(0.5, "   ")).toBe("Amounts are for half the recipe.");
+  it("mentions only the yield when the recipe has no ingredient lines", () => {
+    expect(batchNote(2, "12 muffins")).toBe("Yield doubled.");
+    expect(batchNote(0.5, "12 muffins", [])).toBe("Yield halved.");
+  });
+
+  it("says nothing when nothing changed", () => {
+    expect(batchNote(2, "About a dozen", ["salt to taste"])).toBeNull();
+    expect(batchNote(2, "   ", [])).toBeNull();
   });
 });
