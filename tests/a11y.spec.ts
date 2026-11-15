@@ -299,7 +299,19 @@ async function expectDockClearance(
     await open(page, route, viewport);
 
     const dock = page.locator(".book-dock");
-    await expect(dock, `Dock missing on ${route.path}`).toBeVisible();
+    if (!(await dock.isVisible())) {
+      // The write form hides the phone tab bar so fields can clear the save row.
+      if (await page.locator(".write-desk-leaf").isVisible()) {
+        const save = page.locator(".write-desk-savebar .book-press").first();
+        await expect(save).toBeVisible();
+        const saveBox = await save.boundingBox();
+        expect(saveBox, `Save row missing on ${route.path}`).toBeTruthy();
+        expect(saveBox!.height).toBeGreaterThanOrEqual(MIN_TAP);
+        expect(saveBox!.y + saveBox!.height).toBeLessThanOrEqual(viewport.height);
+        continue;
+      }
+      expect(dock, `Dock missing on ${route.path}`).toBeVisible();
+    }
     const dockBox = await dock.boundingBox();
     expect(dockBox).toBeTruthy();
 

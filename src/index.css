@@ -4691,6 +4691,12 @@ summary::-webkit-details-marker {
   margin-top: 0.75rem;
 }
 
+/* The picker is opened from the choice buttons. A 1px file input still
+   receives taps on some phones and swallows the control underneath it. */
+.write-desk-file {
+  pointer-events: none;
+}
+
 @media (max-width: 639px) {
   .write-desk-choices {
     align-items: stretch;
@@ -4708,6 +4714,62 @@ summary::-webkit-details-marker {
   .write-desk select {
     scroll-margin-top: 5rem;
     scroll-margin-bottom: calc(var(--dock-clearance, 4.5rem) + 8rem);
+  }
+
+  /* The two-high save row plus the tab bar covered about a quarter of the
+     phone, and fields such as "How it went" sat under that chrome. Hide the
+     tab bar while the form is open and keep save on one short row. */
+  body:has(.write-desk-leaf) .book-dock {
+    display: none;
+  }
+
+  body:has(.write-desk-leaf) .room-shell[data-dock="true"] {
+    --dock-clearance: 0px;
+    --room-pad-bottom: max(0.35rem, env(safe-area-inset-bottom, 0px));
+    padding-bottom: var(--room-pad-bottom);
+  }
+
+  body:has(.write-desk-leaf) .room-shell[data-dock="true"] .sticky.bottom-0 {
+    bottom: 0;
+  }
+
+  body:has(.write-desk-leaf) .room-shell[data-dock="true"][data-book-grow="true"] .book-face {
+    padding-bottom: max(0.35rem, env(safe-area-inset-bottom, 0px));
+  }
+
+  html:has(.write-desk-leaf) {
+    scroll-padding-top: 4.5rem;
+    scroll-padding-bottom: 6.5rem;
+  }
+
+  body:has(.write-desk-leaf) .write-desk input,
+  body:has(.write-desk-leaf) .write-desk textarea,
+  body:has(.write-desk-leaf) .write-desk select {
+    scroll-margin-top: 4.5rem;
+    scroll-margin-bottom: 6.5rem;
+  }
+
+  .write-desk-leaf .write-desk-savebar {
+    margin-top: 0.75rem;
+    padding: 0.4rem 0.15rem max(0.45rem, env(safe-area-inset-bottom, 0px));
+  }
+
+  .write-desk-leaf .write-desk-actions {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+
+  .write-desk-leaf .write-desk-savebar .book-press {
+    width: auto;
+    min-width: 0;
+    min-height: 44px;
+    flex: 1 1 0;
+    justify-content: center;
+    padding: 0.35rem 0.55rem;
+    font-size: 0.95rem;
+    line-height: 1.15;
   }
 }
 
@@ -4862,27 +4924,6 @@ summary::-webkit-details-marker {
   outline-offset: 3px;
 }
 
-.write-desk-title {
-  box-sizing: border-box;
-  width: 100%;
-  max-width: 100%;
-  margin: 0;
-  border: 0;
-  border-bottom: 1.5px solid var(--color-rule);
-  border-radius: 0;
-  background: transparent;
-  padding: 0 0 0.35rem;
-  outline: none;
-}
-
-.write-desk-title::placeholder {
-  color: color-mix(in srgb, var(--color-ink-soft) 85%, transparent);
-}
-
-.write-desk-title:focus-visible {
-  border-bottom-color: var(--color-cinnamon-deep);
-}
-
 .write-desk-date {
   display: inline;
   width: auto;
@@ -4910,8 +4951,7 @@ summary::-webkit-details-marker {
 }
 
 .write-desk-leaf input,
-.write-desk-leaf textarea,
-.write-desk-leaf .write-desk-title {
+.write-desk-leaf textarea {
   box-sizing: border-box;
   max-width: 100%;
 }

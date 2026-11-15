@@ -779,6 +779,46 @@ test.describe("add paths at 390", () => {
     expect(parseFloat(border)).toBeGreaterThanOrEqual(2);
   });
 
+  test("one tap on the empty side of Type it myself opens the form", async ({
+    page,
+  }) => {
+    await start(page);
+    const button = page.getByRole("button", { name: "Type it myself", exact: true });
+    const box = await button.boundingBox();
+    expect(box).not.toBeNull();
+    // The old control was only as wide as the words, so a tap on the rest of
+    // the row never reached it. The right side of the full-width button must.
+    const x = box!.x + box!.width - 16;
+    const y = box!.y + box!.height / 2;
+    const hit = await page.evaluate(({ x: px, y: py }) => {
+      const el = document.elementFromPoint(px, py);
+      if (!(el instanceof HTMLElement)) {
+        return null;
+      }
+      const button = el.closest("button");
+      return {
+        tag: button?.tagName ?? el.tagName,
+        text: (button ?? el).textContent?.trim() ?? "",
+      };
+    }, { x, y });
+    expect(hit?.tag).toBe("BUTTON");
+    expect(hit?.text).toBe("Type it myself");
+    await page.touchscreen.tap(x, y);
+    await expect(page.getByLabel("What do you call it?")).toBeVisible();
+    const labelBox = await page.getByText("What do you call it?", { exact: true }).boundingBox();
+    expect(labelBox).not.toBeNull();
+    expect(labelBox!.height).toBeGreaterThan(20);
+    const field = await page.getByLabel("What do you call it?").evaluate((el) => {
+      const styles = getComputedStyle(el);
+      return {
+        border: parseFloat(styles.borderTopWidth),
+        background: styles.backgroundColor,
+      };
+    });
+    expect(field.border).toBeGreaterThanOrEqual(1);
+    expect(field.background).not.toBe("rgba(0, 0, 0, 0)");
+  });
+
   test("photo and file pickers offer the camera and the library", async ({
     page,
   }) => {
@@ -818,26 +858,41 @@ test.describe("add paths at 390", () => {
     );
     expect(parseFloat(backBorder)).toBeGreaterThanOrEqual(2);
     await expect(page.getByLabel("What do you call it?")).toBeFocused();
-    const save = await expectAboveDock(
-      page,
-      page.getByRole("button", { name: "Put it in the book" }),
-    );
-    const later = await expectAboveDock(
-      page,
-      page.getByRole("button", { name: "Save for later" }),
-    );
-    expect(Math.abs(save.width - later.width)).toBeLessThanOrEqual(2);
+    await expect(page.locator(".book-dock")).toBeHidden();
+    const save = page.getByRole("button", { name: "Put it in the book" });
+    const later = page.getByRole("button", { name: "Save for later" });
+    const saveBox = await save.boundingBox();
+    const laterBox = await later.boundingBox();
+    expect(saveBox).not.toBeNull();
+    expect(laterBox).not.toBeNull();
+    expect(Math.min(saveBox!.width, saveBox!.height)).toBeGreaterThanOrEqual(44);
+    expect(Math.min(laterBox!.width, laterBox!.height)).toBeGreaterThanOrEqual(44);
+    expect(Math.abs(saveBox!.y - laterBox!.y)).toBeLessThanOrEqual(2);
+    expect(Math.abs(saveBox!.width - laterBox!.width)).toBeLessThanOrEqual(2);
+    const bar = await page.locator(".write-desk-savebar").boundingBox();
+    expect(bar).not.toBeNull();
+    expect(bar!.height).toBeLessThanOrEqual(88);
     const cardPhoto = page.getByLabel("Tap to add a photo");
     await expect(cardPhoto).toHaveAttribute("accept", "image/*");
     expect(await cardPhoto.getAttribute("capture")).toBeNull();
 
+    const story = page.getByLabel("How it went");
+    await story.focus();
+    const storyBox = await story.boundingBox();
+    const storyBar = await page.locator(".write-desk-savebar").boundingBox();
+    expect(storyBox).not.toBeNull();
+    expect(storyBar).not.toBeNull();
+    expect(storyBox!.y).toBeGreaterThanOrEqual(0);
+    expect(storyBox!.y + storyBox!.height).toBeLessThanOrEqual(storyBar!.y + 1);
+
     const step = lineGroup(page, "How").getByRole("textbox");
     await step.focus();
     const stepBox = await step.boundingBox();
-    const dockBox = await page.locator(".book-dock").boundingBox();
+    const stepBar = await page.locator(".write-desk-savebar").boundingBox();
     expect(stepBox).not.toBeNull();
-    expect(dockBox).not.toBeNull();
-    expect(stepBox!.y + stepBox!.height).toBeLessThanOrEqual(dockBox!.y + 1);
+    expect(stepBar).not.toBeNull();
+    expect(stepBox!.y).toBeGreaterThanOrEqual(0);
+    expect(stepBox!.y + stepBox!.height).toBeLessThanOrEqual(stepBar!.y + 1);
     const margin = await step.evaluate(
       (el) => getComputedStyle(el).scrollMarginBottom,
     );
@@ -892,10 +947,16 @@ test.describe("add paths at 390", () => {
     await expect(url).toHaveAttribute("type", "url");
     await expect(url).toHaveAttribute("enterkeyhint", "go");
     await expect(url).toHaveAttribute("autocapitalize", "off");
-    await expectAboveDock(
-      page,
-      page.getByRole("button", { name: "Put it in the book" }),
-    );
+    await expect(page.locator(".book-dock")).toBeHidden();
+    const urlBox = await url.boundingBox();
+    const save = await page
+      .getByRole("button", { name: "Put it in the book" })
+      .boundingBox();
+    expect(urlBox).not.toBeNull();
+    expect(save).not.toBeNull();
+    expect(urlBox!.y).toBeGreaterThanOrEqual(0);
+    expect(urlBox!.y + urlBox!.height).toBeLessThanOrEqual(save!.y + 1);
+    expect(save!.y + save!.height).toBeLessThanOrEqual(844);
   });
 
   test("a scanned pile keeps its save action above the tab bar", async ({
@@ -934,16 +995,15 @@ test.describe("add paths at 390", () => {
     await page.getByRole("button", { name: "Put it in the book" }).click();
     const alert = page.getByRole("alert");
     await expect(alert).toHaveText("Give it a name so you can find it later.");
+    await expect(page.locator(".book-dock")).toBeHidden();
     const box = await alert.boundingBox();
     const save = await page
       .getByRole("button", { name: "Put it in the book" })
       .boundingBox();
-    const dock = await page.locator(".book-dock").boundingBox();
     expect(box).not.toBeNull();
     expect(save).not.toBeNull();
-    expect(dock).not.toBeNull();
     expect(box!.y).toBeGreaterThanOrEqual(0);
     expect(box!.y + box!.height).toBeLessThanOrEqual(save!.y + 1);
-    expect(save!.y + save!.height).toBeLessThanOrEqual(dock!.y + 1);
+    expect(save!.y + save!.height).toBeLessThanOrEqual(844);
   });
 });
