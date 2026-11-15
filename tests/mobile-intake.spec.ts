@@ -812,6 +812,11 @@ test.describe("add paths at 390", () => {
   }) => {
     await start(page);
     await page.getByRole("button", { name: "Type it myself", exact: true }).click();
+    const back = page.getByRole("button", { name: "Add a different way" });
+    const backBorder = await back.evaluate(
+      (el) => getComputedStyle(el).borderTopWidth,
+    );
+    expect(parseFloat(backBorder)).toBeGreaterThanOrEqual(2);
     await expect(page.getByLabel("What do you call it?")).toBeFocused();
     const save = await expectAboveDock(
       page,
@@ -896,10 +901,14 @@ test.describe("add paths at 390", () => {
     );
     const desk = await page.locator(".write-desk").boundingBox();
     expect(save.width).toBeGreaterThan((desk?.width ?? 0) * 0.9);
-    await expectAboveDock(
-      page,
-      page.getByRole("button", { name: "Open and fix" }).first(),
+    const fix = page.getByRole("button", { name: "Open and fix" }).first();
+    const fixBox = await expectAboveDock(page, fix);
+    const columnBox = await fix.locator("xpath=..").boundingBox();
+    expect(fixBox.width).toBeGreaterThan((columnBox?.width ?? 0) * 0.9);
+    const fixBorder = await fix.evaluate(
+      (el) => getComputedStyle(el).borderTopWidth,
     );
+    expect(parseFloat(fixBorder)).toBeGreaterThanOrEqual(2);
   });
 
   test("a missing name explains itself above the tab bar", async ({ page }) => {
