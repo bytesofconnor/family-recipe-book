@@ -1,30 +1,56 @@
+function visibleChromeBottom(targetTop: number): number {
+  const view = window.visualViewport;
+  const viewBottom = (view?.offsetTop ?? 0) + (view?.height ?? window.innerHeight);
+  let limit = viewBottom;
+  const dock = document.querySelector(".book-dock");
+  if (dock instanceof HTMLElement && getComputedStyle(dock).display !== "none") {
+    const dockTop = dock.getBoundingClientRect().top;
+    if (dockTop > 0) {
+      limit = Math.min(limit, dockTop);
+    }
+  }
+  const bar = document.querySelector(".write-desk-savebar");
+  if (bar instanceof HTMLElement) {
+    const barTop = bar.getBoundingClientRect().top;
+    // Only the stuck bar covers the field. Once it sits lower in the page,
+    // the field is already above it.
+    if (barTop > targetTop && barTop < limit) {
+      limit = barTop;
+    }
+  }
+  return limit;
+}
+
 export function fieldIsCovered(target: HTMLElement): boolean {
   const rect = target.getBoundingClientRect();
   if (rect.width === 0 && rect.height === 0) {
     return false;
   }
-  const view = window.visualViewport;
-  const viewTop = view?.offsetTop ?? 0;
-  const viewBottom = viewTop + (view?.height ?? window.innerHeight);
-  const dock = document.querySelector(".book-dock");
-  const dockTop =
-    dock instanceof HTMLElement ? dock.getBoundingClientRect().top : viewBottom;
-  let limit = Math.min(dockTop, viewBottom);
-  const bar = document.querySelector(".write-desk-savebar");
-  if (bar instanceof HTMLElement) {
-    const barTop = bar.getBoundingClientRect().top;
-    if (barTop > rect.top && barTop < limit) {
-      limit = barTop;
-    }
-  }
-  return rect.top < viewTop + 8 || rect.bottom > limit - 8;
+  const viewTop = (window.visualViewport?.offsetTop ?? 0) + 8;
+  const limit = visibleChromeBottom(rect.top) - 12;
+  return rect.top < viewTop || rect.bottom > limit;
 }
 
 export function keepFocusedFieldVisible(target: HTMLElement): void {
-  if (!fieldIsCovered(target)) {
+  const rect = target.getBoundingClientRect();
+  if (rect.width === 0 && rect.height === 0) {
     return;
   }
-  target.scrollIntoView({ block: "center", inline: "nearest" });
+  const viewTop = (window.visualViewport?.offsetTop ?? 0) + 8;
+  const limit = visibleChromeBottom(rect.top) - 12;
+  if (rect.top >= viewTop && rect.bottom <= limit) {
+    return;
+  }
+  // Move just enough that the field clears the save row. Centering leaves
+  // the bottom of a field under the sticky bar when the page cannot scroll
+  // far enough to put that field in the middle.
+  const delta = rect.bottom > limit ? rect.bottom - limit : rect.top - viewTop;
+  const scroller = document.scrollingElement;
+  if (scroller) {
+    scroller.scrollTop += delta;
+    return;
+  }
+  window.scrollBy({ top: delta, left: 0, behavior: "auto" });
 }
 
 export function watchWriteDeskFields(): () => void {

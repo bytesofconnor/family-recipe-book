@@ -1394,7 +1394,7 @@ export function WriteDesk({
         aria-label={
           intake === "photo" ? "Recipe photos" : "Recipe file"
         }
-        className="sr-only"
+        className="write-desk-file sr-only"
         onChange={(event) => {
           const picked = Array.from(event.currentTarget.files ?? []);
           event.currentTarget.value = "";
@@ -1724,25 +1724,25 @@ export function WriteDesk({
                 )}
               </Kicker>
 
-              <Label htmlFor="bake-title" className="sr-only">
-                What do you call it?
-              </Label>
-              <input
-                id="bake-title"
-                type="text"
-                value={title}
-                onChange={(event) => {
-                  setTitleTouched(true);
-                  setTitle(event.target.value);
-                }}
-                placeholder="What do you call it?"
-                required
-                autoComplete="off"
-                autoCapitalize="sentences"
-                enterKeyHint="next"
-                className="bake-leaf-title write-desk-title"
-              />
-              <ReadFromLine from={readFrom} show={readFields.title} />
+              <div className="write-desk-name">
+                <Label htmlFor="bake-title">What do you call it?</Label>
+                <Input
+                  id="bake-title"
+                  type="text"
+                  value={title}
+                  onChange={(event) => {
+                    setTitleTouched(true);
+                    setTitle(event.target.value);
+                  }}
+                  placeholder="Sunday stew"
+                  required
+                  autoComplete="off"
+                  autoCapitalize="sentences"
+                  enterKeyHint="next"
+                  className="mt-2"
+                />
+                <ReadFromLine from={readFrom} show={readFields.title} />
+              </div>
 
               <div>
                 <p className="text-[16px] font-medium leading-6 text-ink-soft">

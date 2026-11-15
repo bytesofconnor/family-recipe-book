@@ -113,6 +113,38 @@ test("phone paper is flush left and the last line clears the tab bar", async ({
   }
 });
 
+test("desktop typing keeps the name field readable above the save row", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/add");
+  await page.getByRole("button", { name: "Type it myself", exact: true }).click();
+  const label = page.getByText("What do you call it?", { exact: true });
+  const labelBox = await label.boundingBox();
+  expect(labelBox).not.toBeNull();
+  expect(labelBox!.height).toBeGreaterThan(20);
+  const field = await page.getByLabel("What do you call it?").evaluate((el) => {
+    const styles = getComputedStyle(el);
+    return {
+      border: parseFloat(styles.borderTopWidth),
+      background: styles.backgroundColor,
+    };
+  });
+  expect(field.border).toBeGreaterThanOrEqual(1);
+  expect(field.background).not.toBe("rgba(0, 0, 0, 0)");
+  await expect(page.locator(".book-bookmarks")).toBeVisible();
+  await expect(page.locator(".book-dock")).toBeHidden();
+
+  const story = page.getByLabel("How it went");
+  await story.focus();
+  const storyBox = await story.boundingBox();
+  const save = await page.getByRole("button", { name: "Put it in the book" }).boundingBox();
+  expect(storyBox).not.toBeNull();
+  expect(save).not.toBeNull();
+  expect(storyBox!.y).toBeGreaterThanOrEqual(0);
+  expect(storyBox!.y + storyBox!.height).toBeLessThanOrEqual(save!.y + 1);
+});
+
 test("opening a deep link does not show the recipe index", async ({ page }) => {
   for (const path of ["/bakes/sunday-muffins", "/add", "/you"]) {
     await page.goto(path, { waitUntil: "domcontentloaded" });
