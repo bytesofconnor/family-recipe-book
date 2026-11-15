@@ -346,10 +346,20 @@ function wantsSingular(quantity: string, isRange: boolean): boolean {
   return !/^\d+$/.test(quantity);
 }
 
+function canonicalUnit(unit: string): string {
+  const lower = unit.trim().toLowerCase();
+  if (lower.length === 0) return "";
+  for (const entry of UNIT_FORMS) {
+    if (entry.form === lower) return entry.unit;
+  }
+  return lower;
+}
+
 function displayUnit(unit: string, quantity: string, isRange: boolean): string {
   if (unit.length === 0) return "";
-  const singular = SINGULAR[unit] ?? unit;
-  const plural = PLURAL[singular] ?? `${singular}s`;
+  const canonical = canonicalUnit(unit);
+  const singular = SINGULAR[canonical] ?? canonical;
+  const plural = PLURAL[singular] ?? singular;
   return wantsSingular(quantity, isRange) ? singular : plural;
 }
 

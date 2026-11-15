@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { scaleAmountText } from "../../src/lib/scaleAmount";
-import { parseIngredientLine } from "./ingredientLine";
+import { formatIngredientLine, parseIngredientLine } from "./ingredientLine";
 
 describe("parseIngredientLine", () => {
   it("splits a fraction, a unit, and the item", () => {
@@ -78,5 +78,57 @@ describe("parseIngredientLine", () => {
     expect(part.line).toBe("¾ teaspoon salt");
     expect(scaleAmountText(part.line, 2)).toBe("1 ½ teaspoons salt");
     expect(scaleAmountText(part.line, 0.5)).toBe("⅜ teaspoon salt");
+  });
+});
+
+describe("abbreviation units", () => {
+  const forms = [
+    ["tbsp", "tablespoon", "tablespoons"],
+    ["tbsp.", "tablespoon", "tablespoons"],
+    ["tbs", "tablespoon", "tablespoons"],
+    ["tbs.", "tablespoon", "tablespoons"],
+    ["tsp", "teaspoon", "teaspoons"],
+    ["tsp.", "teaspoon", "teaspoons"],
+    ["oz", "ounce", "ounces"],
+    ["oz.", "ounce", "ounces"],
+    ["c", "cup", "cups"],
+    ["c.", "cup", "cups"],
+    ["g", "gram", "grams"],
+    ["g.", "gram", "grams"],
+    ["ml", "milliliter", "milliliters"],
+    ["ml.", "milliliter", "milliliters"],
+    ["kg", "kilogram", "kilograms"],
+    ["kg.", "kilogram", "kilograms"],
+    ["qt", "quart", "quarts"],
+    ["qt.", "quart", "quarts"],
+    ["pt", "pint", "pints"],
+    ["pt.", "pint", "pints"],
+    ["pkg", "package", "packages"],
+    ["pkg.", "package", "packages"],
+    ["lb", "pound", "pounds"],
+    ["lb.", "pound", "pounds"],
+    ["lbs", "pound", "pounds"],
+    ["l", "liter", "liters"],
+    ["l.", "liter", "liters"],
+  ] as const;
+
+  it.each(forms)("keeps %s as one %s and two %s", (abbr, singular, plural) => {
+    const one = formatIngredientLine({ quantity: "1", unit: abbr, item: "butter" });
+    const two = formatIngredientLine({ quantity: "2", unit: abbr, item: "butter" });
+    expect(parseIngredientLine(one)).toMatchObject({
+      quantity: "1",
+      unit: singular,
+      item: "butter",
+      line: `1 ${singular} butter`,
+    });
+    expect(parseIngredientLine(two)).toMatchObject({
+      quantity: "2",
+      unit: singular,
+      item: "butter",
+      line: `2 ${plural} butter`,
+    });
+    expect(parseIngredientLine(`1 ${singular} butter`).unit).toBe(singular);
+    expect(parseIngredientLine(`2 ${plural} butter`).unit).toBe(singular);
+    expect(parseIngredientLine(`2 ${plural} butter`).item).toBe("butter");
   });
 });
