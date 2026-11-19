@@ -20,6 +20,15 @@ updates:
       - dependency-name: typescript
         versions:
           - 7.x
+      # @convex-dev/auth 2.0 removes convexAuth and authTables.
+      # convex/auth.ts still calls convexAuth. convex/schema.ts still
+      # spreads authTables, then replaces the users table. Sign-in still
+      # calls useAuthActions().signIn. PR 60 failed typecheck on that bump
+      # with 160 errors.
+      # https://github.com/bytesofconnor/family-recipe-book/pull/60
+      - dependency-name: "@convex-dev/auth"
+        versions:
+          - 2.x
 
   - package-ecosystem: github-actions
     directory: /
