@@ -532,6 +532,17 @@ test.describe("mobile recipe intake", () => {
   }) => {
     const { leaked } = await start(page);
     await page.getByRole("button", { name: "Type it myself" }).click();
+    const changeDate = page.getByRole("button", { name: "Change date" });
+    const changeBox = await changeDate.boundingBox();
+    expect(changeBox).not.toBeNull();
+    expect(changeBox!.height).toBeGreaterThanOrEqual(44);
+    expect(changeBox!.width).toBeGreaterThanOrEqual(44);
+    const placeholderIsHint = await page.locator("#bake-title").evaluate((el) => {
+      const hint = getComputedStyle(el, "::placeholder").color;
+      const typed = getComputedStyle(el).color;
+      return hint !== typed;
+    });
+    expect(placeholderIsHint).toBe(true);
     await expectClearOfDock(page, "Put it in the book");
     const save = await tabToControl(page, "Put it in the book");
     await expect(save).toBeFocused();
@@ -700,9 +711,24 @@ test.describe("mobile recipe intake", () => {
       mimeType: "image/jpeg",
       buffer: JPEG,
     });
-    await expect(page.getByRole("alert")).toHaveText(
+    const alert = page.getByRole("alert");
+    await expect(alert).toHaveText(
       "The recipe didn't come through. The picture is still here. You can try again, or type it.",
     );
+    await expect(alert).toBeInViewport();
+    const sourceCovered = await page.evaluate(() => {
+      const chip = [...document.querySelectorAll("button")].find(
+        (button) => button.textContent?.trim() === "Mine",
+      );
+      const bar = document.querySelector(".write-desk-savebar");
+      if (!(chip instanceof HTMLElement) || !(bar instanceof HTMLElement)) {
+        return true;
+      }
+      const chipBox = chip.getBoundingClientRect();
+      const barBox = bar.getBoundingClientRect();
+      return chipBox.bottom > barBox.top + 1 && chipBox.top < barBox.bottom - 1;
+    });
+    expect(sourceCovered).toBe(false);
     await expect(page.getByLabel("What do you call it?")).toHaveValue("");
     await expect(page.getByRole("img", { name: "Recipe photo" })).toBeVisible();
     await page.getByLabel("What do you call it?").fill("Quiet loaf");

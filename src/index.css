@@ -4692,6 +4692,14 @@ summary::-webkit-details-marker {
   line-height: 1.4;
 }
 
+.write-desk-alert {
+  margin: 0.45rem 0 0;
+  color: var(--color-cinnamon-deep);
+  font-size: 17px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
 .write-desk-part-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -4756,6 +4764,46 @@ summary::-webkit-details-marker {
 @media (max-width: 639px) {
   .write-desk-choices {
     align-items: stretch;
+  }
+
+  /* Keep the date with its control, on its own row, tall enough to tap. */
+  .write-desk-when {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 0.35rem;
+    width: 100%;
+    margin-top: 0.1rem;
+  }
+
+  .write-desk-when-sep:first-child {
+    display: none;
+  }
+
+  .write-desk-when-change {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 0.15rem;
+  }
+
+  .write-desk-date {
+    min-height: 44px;
+  }
+
+  .write-desk input::placeholder,
+  .write-desk textarea::placeholder {
+    color: color-mix(in srgb, var(--color-ink-soft) 62%, var(--color-paper-raised));
+  }
+
+  /* A long read error sits under the name. Keep the photo short so the
+     source buttons stay above the save row. */
+  .write-desk:has(.write-desk-alert) .write-desk-photo-img {
+    height: 7.5rem;
+    aspect-ratio: auto;
+    object-fit: cover;
   }
 
   .write-desk-choices > .book-press,

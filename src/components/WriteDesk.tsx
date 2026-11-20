@@ -1960,31 +1960,37 @@ export function WriteDesk({
                 {editingBakeId ? "Editing" : "New card"}
                 {" · "}
                 {bakerName}
-                {" · "}
-                {showDate ? (
-                  <label htmlFor="bakedOn" className="inline">
-                    <span className="sr-only">When</span>
-                    <input
-                      id="bakedOn"
-                      type="date"
-                      value={bakedOn}
-                      onChange={(event) => setBakedOn(event.target.value)}
-                      className="write-desk-date"
-                    />
-                  </label>
-                ) : (
-                  <>
-                    <time dateTime={bakedOn}>{formatBakeDate(bakedOn)}</time>
+                <span className="write-desk-when">
+                  <span className="write-desk-when-sep" aria-hidden="true">
                     {" · "}
-                    <button
-                      type="button"
-                      className="cursor-pointer underline decoration-rule underline-offset-4 hover:text-cocoa"
-                      onClick={() => setShowDate(true)}
-                    >
-                      Change date
-                    </button>
-                  </>
-                )}
+                  </span>
+                  {showDate ? (
+                    <label htmlFor="bakedOn" className="inline">
+                      <span className="sr-only">When</span>
+                      <input
+                        id="bakedOn"
+                        type="date"
+                        value={bakedOn}
+                        onChange={(event) => setBakedOn(event.target.value)}
+                        className="write-desk-date"
+                      />
+                    </label>
+                  ) : (
+                    <>
+                      <time dateTime={bakedOn}>{formatBakeDate(bakedOn)}</time>
+                      <span className="write-desk-when-sep" aria-hidden="true">
+                        {" · "}
+                      </span>
+                      <button
+                        type="button"
+                        className="write-desk-when-change cursor-pointer underline decoration-rule underline-offset-4 hover:text-cocoa"
+                        onClick={() => setShowDate(true)}
+                      >
+                        Change date
+                      </button>
+                    </>
+                  )}
+                </span>
               </Kicker>
 
               <div className="write-desk-name">
@@ -2002,9 +2008,21 @@ export function WriteDesk({
                   autoComplete="off"
                   autoCapitalize="sentences"
                   enterKeyHint="next"
-                  aria-describedby={marks?.title === "low" ? "title-check" : undefined}
+                  aria-describedby={
+                    [
+                      marks?.title === "low" ? "title-check" : "",
+                      error ? formErrorId : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ") || undefined
+                  }
                   className="mt-2"
                 />
+                {error ? (
+                  <p id={formErrorId} role="alert" className="write-desk-alert">
+                    {error}
+                  </p>
+                ) : null}
                 <ReadFromLine from={readFrom} show={readFields.title} />
                 {marks?.title === "low" ? (
                   <p className="write-desk-check" id="title-check">
@@ -2051,6 +2069,7 @@ export function WriteDesk({
                     spellCheck={false}
                     enterKeyHint="go"
                     value={sourceUrl}
+                    aria-describedby={error ? formErrorId : undefined}
                     onChange={(event) => setSourceUrl(event.target.value)}
                     onBlur={(event) =>
                       setSourceUrl(
@@ -2352,15 +2371,6 @@ export function WriteDesk({
           ) : null}
 
           <div className="write-desk-savebar sticky bottom-0 z-10 mt-8 -mx-2 border-t border-rule bg-paper px-2 py-3">
-            {error ? (
-              <p
-                id={formErrorId}
-                role="alert"
-                className="mb-3 text-[17px] text-cinnamon-deep"
-              >
-                {error}
-              </p>
-            ) : null}
             <div className="write-desk-actions flex flex-col gap-3 sm:flex-row sm:flex-wrap">
               <button
                 type="submit"
