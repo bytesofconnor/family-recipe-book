@@ -542,7 +542,13 @@ test.describe("mobile recipe intake", () => {
       const typed = getComputedStyle(el).color;
       return hint !== typed;
     });
+    const storyHint = await page.locator("#story").evaluate((el) => {
+      const hint = getComputedStyle(el, "::placeholder").color;
+      const typed = getComputedStyle(el).color;
+      return hint !== typed;
+    });
     expect(placeholderIsHint).toBe(true);
+    expect(storyHint).toBe(true);
     await expectClearOfDock(page, "Put it in the book");
     const save = await tabToControl(page, "Put it in the book");
     await expect(save).toBeFocused();
@@ -716,6 +722,9 @@ test.describe("mobile recipe intake", () => {
       "The recipe didn't come through. The picture is still here. You can try again, or type it.",
     );
     await expect(alert).toBeInViewport();
+    await expect(page.locator(".write-desk-savebar")).not.toContainText(
+      "didn't come through",
+    );
     const sourceCovered = await page.evaluate(() => {
       const chip = [...document.querySelectorAll("button")].find(
         (button) => button.textContent?.trim() === "Mine",
